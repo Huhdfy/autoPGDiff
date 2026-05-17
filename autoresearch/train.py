@@ -82,6 +82,8 @@ DIFFUSION_STEPS = 1000    # total diffusion steps of the pre-trained model
 
 # --- I/O paths ---
 IN_DIR = "testdata/cropped_faces"
+# Use only first N images for faster experiments
+MAX_IMAGES = 4
 OUT_DIR = "results/experiment"
 REF_DIR = None
 MASK_DIR = None
@@ -244,6 +246,9 @@ class PartialGuidance:
             total_loss = total_loss * schedule
 
             gradient = th.autograd.grad(total_loss, pred_xstart_in)[0]
+            # Gradient clipping: prevent extreme single-step corrections
+            grad_clamp = 5.0  # max absolute gradient value per pixel
+            gradient = gradient.clamp(-grad_clamp, grad_clamp)
             if self.prev_gradient is not None:
                 momentum = self.w.get("grad_momentum", 0.9)
                 gradient = momentum * self.prev_gradient + (1 - momentum) * gradient
@@ -568,6 +573,8 @@ def main():
 
     # ---- collect images ----
     lr_images = sorted(os.listdir(IN_DIR))
+    if MAX_IMAGES:
+        lr_images = lr_images[:MAX_IMAGES]
     if not lr_images:
         print(f"ERROR: No images in {IN_DIR}")
         return
