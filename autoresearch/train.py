@@ -66,7 +66,7 @@ GRAD_MOMENTUM = 0.0      # 0 = no momentum (improves quality at full 1000 steps)
 REF_WEIGHT = 25.0
 OP_LIGHTNESS_WEIGHT = 1.0
 OP_COLOR_WEIGHT = 0.5
-RESIDUAL_BLEND = 1.0        # stronger blend
+RESIDUAL_BLEND = 0.5        # output = (sample + input * blend) / (1 + blend) — weighted average
 
 # --- multi-step guidance ---
 N = 1                # gradient steps per timestep (>1 = stronger guidance)
@@ -344,13 +344,11 @@ def run_experiment(diffusion, guidance, images, out_dir, task, guidance_scale,
             seed=seed,
         )
 
-        # ── Residual post-processing: blend input high-frequency detail ──
+        # ── Residual post-processing: weighted average with input ──
         if RESIDUAL_BLEND > 0:
             y_input = model_kwargs.get("y")
             if y_input is not None:
-                y_blur = F.avg_pool2d(y_input, 15, stride=1, padding=7)
-                hf_detail = (y_input - y_blur) * RESIDUAL_BLEND
-                sample = (sample + hf_detail).clamp(-1, 1)
+                sample = ((1 - RESIDUAL_BLEND) * sample + RESIDUAL_BLEND * y_input).clamp(-1, 1)
 
         save_image(sample, os.path.join(out_dir, img_name))
         elapsed = time.time() - t_img
