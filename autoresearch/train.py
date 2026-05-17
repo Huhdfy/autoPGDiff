@@ -62,6 +62,7 @@ COLOR_WEIGHT = 0.05
 UNMASKED_WEIGHT = 1.0
 SS_WEIGHT = 1.0
 EDGE_WEIGHT = 0.02       # edge preservation loss weight
+GRAD_MOMENTUM = 0.9      # momentum for gradient smoothing across timesteps
 REF_WEIGHT = 25.0
 OP_LIGHTNESS_WEIGHT = 1.0
 OP_COLOR_WEIGHT = 0.5
@@ -133,10 +134,12 @@ class PartialGuidance:
         self.w = weights
         self.losses = []           # accumulated per-timestep guidance loss
         self.loss_breakdown = {}   # per-loss-term tracking (for analysis)
+        self.prev_gradient = None  # for gradient momentum
 
     def reset(self):
         self.losses = []
         self.loss_breakdown = {}
+        self.prev_gradient = None
 
     def avg_loss(self):
         if not self.losses:
@@ -241,6 +244,10 @@ class PartialGuidance:
             total_loss = total_loss * schedule
 
             gradient = th.autograd.grad(total_loss, pred_xstart_in)[0]
+            if self.prev_gradient is not None:
+                momentum = self.w.get("grad_momentum", 0.9)
+                gradient = momentum * self.prev_gradient + (1 - momentum) * gradient
+            self.prev_gradient = gradient.detach()
             if task in ("inpainting", "old_photo_restoration"):
                 gradient[mask > 0] = 0
 
@@ -314,6 +321,7 @@ def run_experiment(diffusion, guidance, images, out_dir, task, guidance_scale,
     per_image_metrics = []
 
     for idx, img_name in enumerate(images):
+        guidance.reset()
         t_img = time.time()
         print(f"[{idx + 1}/{len(images)}] {img_name}")
 
@@ -516,6 +524,7 @@ def main():
         unmasked_weight=UNMASKED_WEIGHT,
         ss_weight=SS_WEIGHT,
         edge_weight=EDGE_WEIGHT,
+        grad_momentum=GRAD_MOMENTUM,
         ref_weight=REF_WEIGHT,
         op_lightness_weight=OP_LIGHTNESS_WEIGHT,
         op_color_weight=OP_COLOR_WEIGHT,
