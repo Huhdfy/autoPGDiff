@@ -62,7 +62,7 @@ COLOR_WEIGHT = 0.05
 UNMASKED_WEIGHT = 1.0
 SS_WEIGHT = 1.0
 EDGE_WEIGHT = 0.02       # edge preservation loss weight
-GRAD_MOMENTUM = 0.9      # momentum for gradient smoothing across timesteps
+GRAD_MOMENTUM = 0.0      # 0 = no momentum (improves quality at full 1000 steps)
 REF_WEIGHT = 25.0
 OP_LIGHTNESS_WEIGHT = 1.0
 OP_COLOR_WEIGHT = 0.5
