@@ -7,11 +7,9 @@ Usage: python analysis.py [--tsv results.tsv]
 
 import argparse
 import os
-import json
 
 
 def parse_loss_breakdown(raw):
-    """Parse 'key1:val1,key2:val2' into dict."""
     if not raw or raw == "N/A":
         return {}
     result = {}
@@ -28,9 +26,9 @@ def parse_loss_breakdown(raw):
 
 def analyze(tsv_path="results.tsv"):
     if not os.path.exists(tsv_path):
-        print(f"ERROR: {tsv_path} not found. Run some experiments first.")
-        print(f"Expected format (tab-separated):")
-        print(f"  commit  avg_loss  loss_per_image  task  status  description  key_params  loss_breakdown")
+        print(f"ERROR: {tsv_path} not found.")
+        print("Expected 10 columns (tab-separated):")
+        print("  commit  quality_score  avg_loss  avg_sharpness  loss_per_image  task  status  description  key_params  loss_breakdown")
         return
 
     rows = []
@@ -41,8 +39,7 @@ def analyze(tsv_path="results.tsv"):
             if not line:
                 continue
             parts = line.split("\t")
-            # Pad to 8 columns if needed
-            while len(parts) < 8:
+            while len(parts) < 10:
                 parts.append("")
             rows.append(parts)
 
@@ -56,7 +53,7 @@ def analyze(tsv_path="results.tsv"):
     # Count outcomes
     statuses = {}
     for r in rows:
-        s = r[4].strip().upper() if len(r) > 4 else "UNKNOWN"
+        s = r[6].strip().upper() if len(r) > 6 else "UNKNOWN"
         statuses[s] = statuses.get(s, 0) + 1
 
     print("Experiment outcomes:")
@@ -72,86 +69,83 @@ def analyze(tsv_path="results.tsv"):
 
     # Baseline
     baseline = rows[0]
-    baseline_loss = float(baseline[1]) if len(baseline) > 1 and baseline[1] else 0
+    safe_float = lambda r, i: float(r[i]) if len(r) > i and r[i] and r[i] != "N/A" else 0.0
+    baseline_qs = safe_float(baseline, 1)
 
-    # Show kept experiments
-    kept = [r for r in rows if len(r) > 4 and r[4].strip().upper() == "KEEP"]
+    # Kept experiments
+    kept = [r for r in rows if len(r) > 6 and r[6].strip().upper() == "KEEP"]
     if kept:
         print(f"KEPT experiments ({len(kept)} total):")
-        print(f"{'#':>3}  {'loss':>10}  {'per_img':>8}  {'task':<22}  {'params':<30}  description")
-        print("-" * 110)
+        print(f"{'#':>3}  {'quality':>8}  {'loss':>10}  {'sharp':>8}  {'task':<22}  {'params':<28}  description")
+        print("-" * 115)
         for i, r in enumerate(kept):
-            loss = float(r[1]) if len(r) > 1 else 0
-            per_img = float(r[2]) if len(r) > 2 else 0
-            task = r[3] if len(r) > 3 else "?"
-            params = r[6][:28] if len(r) > 6 else ""
-            desc = r[5][:50] if len(r) > 5 else "?"
-            print(f"{i:3d}  {loss:10.1f}  {per_img:8.1f}  {task:<22s}  {params:<30s}  {desc}")
+            qs = safe_float(r, 1)
+            loss = safe_float(r, 2)
+            sharp = safe_float(r, 3)
+            task = r[5] if len(r) > 5 else "?"
+            params = r[8][:26] if len(r) > 8 else ""
+            desc = r[7][:45] if len(r) > 7 else "?"
+            print(f"{i:3d}  {qs:8.2f}  {loss:10.1f}  {sharp:8.1f}  {task:<22s}  {params:<28s}  {desc}")
         print()
 
     # Summary
-    best = min(kept, key=lambda r: float(r[1])) if kept else None
-    if baseline_loss > 0 and best:
-        best_loss = float(best[1])
-        improvement = baseline_loss - best_loss
+    best = min(kept, key=lambda r: safe_float(r, 1)) if kept else None
+    if best:
+        best_qs = safe_float(best, 1)
+        improvement = baseline_qs - best_qs
         print("=" * 60)
-        print(f"  Baseline loss:  {baseline_loss:.1f}")
-        print(f"  Best loss:      {best_loss:.1f}")
-        print(f"  Improvement:    {improvement:.1f} ({improvement / baseline_loss * 100:.2f}%)")
-        print(f"  Best config:    {best[5] if len(best) > 5 else '?'}")
+        print(f"  Baseline quality_score:  {baseline_qs:.2f}")
+        print(f"  Best quality_score:      {best_qs:.2f}")
+        if baseline_qs > 0:
+            print(f"  Improvement:             {improvement:.2f} ({improvement / baseline_qs * 100:.2f}%)")
+        print(f"  Best config:             {best[7] if len(best) > 7 else '?'}")
         print("=" * 60)
         print()
 
     # Per-task breakdown
     tasks = {}
     for r in rows:
-        if len(r) > 3:
-            task = r[3]
+        if len(r) > 5:
+            task = r[5]
             if task not in tasks:
-                tasks[task] = {"total": 0, "kept": 0, "best": float("inf"), "best_losses": {}}
+                tasks[task] = {"total": 0, "kept": 0, "best_qs": float("inf")}
             tasks[task]["total"] += 1
-            if len(r) > 4 and r[4].strip().upper() == "KEEP":
+            if len(r) > 6 and r[6].strip().upper() == "KEEP":
                 tasks[task]["kept"] += 1
-                loss = float(r[1]) if len(r) > 1 else 0
-                if 0 < loss < tasks[task]["best"]:
-                    tasks[task]["best"] = loss
-                # Track loss breakdown terms
-                breakdown = parse_loss_breakdown(r[7]) if len(r) > 7 else {}
-                for k, v in breakdown.items():
-                    if k not in tasks[task]["best_losses"]:
-                        tasks[task]["best_losses"][k] = v
+                qs = safe_float(r, 1)
+                if qs > 0 and qs < tasks[task]["best_qs"]:
+                    tasks[task]["best_qs"] = qs
 
     if tasks:
         print("By task:")
         for task, stats in sorted(tasks.items()):
-            best_str = f"{stats['best']:.1f}" if stats["best"] < float("inf") else "N/A"
-            print(f"  {task:22s}: {stats['total']:3d} total, {stats['kept']:3d} kept, best={best_str}")
-            if stats["best_losses"]:
-                print(f"    Best loss breakdown: {', '.join(f'{k}={v:.1f}' for k, v in sorted(stats['best_losses'].items()))}")
+            best_str = f"{stats['best_qs']:.2f}" if stats["best_qs"] < float("inf") else "N/A"
+            print(f"  {task:22s}: {stats['total']:3d} total, {stats['kept']:3d} kept, best_qs={best_str}")
 
     # Top hits
     if len(kept) > 1:
         print()
         print("Top improvements (kept experiments by delta):")
-        print(f"{'Rank':>4}  {'Delta':>10}  {'Loss':>10}  {'Task':<22}  Description")
-        print("-" * 90)
-        prev_loss = baseline_loss
+        print(f"{'Rank':>4}  {'Delta':>10}  {'QS':>8}  {'Loss':>10}  {'Sharp':>8}  Description")
+        print("-" * 85)
+        prev_qs = baseline_qs
         hits = []
         for i, r in enumerate(kept):
-            loss = float(r[1]) if len(r) > 1 else 0
+            qs = safe_float(r, 1)
             if i == 0:
-                prev_loss = loss
+                prev_qs = qs
                 continue
-            delta = prev_loss - loss
-            prev_loss = loss
-            desc = r[5] if len(r) > 5 else "?"
-            task = r[3] if len(r) > 3 else "?"
-            hits.append((delta, loss, task, desc))
+            delta = prev_qs - qs
+            prev_qs = qs
+            desc = r[7] if len(r) > 7 else "?"
+            loss = safe_float(r, 2)
+            sharp = safe_float(r, 3)
+            hits.append((delta, qs, loss, sharp, desc))
         hits.sort(key=lambda x: x[0], reverse=True)
-        for rank, (delta, loss, task, desc) in enumerate(hits, 1):
-            print(f"{rank:4d}  {delta:+10.1f}  {loss:10.1f}  {task:<22s}  {desc}")
+        for rank, (delta, qs, loss, sharp, desc) in enumerate(hits, 1):
+            print(f"{rank:4d}  {delta:+10.4f}  {qs:8.2f}  {loss:10.1f}  {sharp:8.1f}  {desc}")
 
-    # Show runs/ directory content
+    # runs/ directory
     runs_dir = "runs"
     if os.path.isdir(runs_dir):
         run_dirs = sorted(

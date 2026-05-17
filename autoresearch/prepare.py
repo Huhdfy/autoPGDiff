@@ -15,6 +15,7 @@ import sys
 import cv2
 import numpy as np
 import torch as th
+import torch.nn.functional as F
 from collections import OrderedDict
 
 _srcdir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -143,6 +144,102 @@ def adaptive_instance_normalization(content_feat, style_feat=None):
     normalized_feat = (content_feat - content_mean.expand(size)) / content_std.expand(size)
     return normalized_feat * style_std.expand(size) + style_mean.expand(size)
 
+
+# ---------------------------------------------------------------------------
+# Image quality metrics (immutable — reliable no-reference evaluation)
+# ---------------------------------------------------------------------------
+
+def compute_sharpness(tensor):
+    """
+    Laplacian variance — standard no-reference sharpness metric.
+    Higher = sharper image (fewer artifacts from over-smoothing).
+    tensor: (1, 3, H, W) in [-1, 1].
+    """
+    img = ((tensor + 1) * 127.5).clamp(0, 255).to(th.uint8)
+    img_np = img[0].permute(1, 2, 0).cpu().numpy()          # (H, W, 3) RGB
+    gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
+    return cv2.Laplacian(gray, cv2.CV_64F).var()
+
+
+def compute_colorfulness(tensor):
+    """
+    Colorfulness metric (Hasler & Suesstrunk 2003).
+    Higher = more colorful. Good for colorization/old-photo tasks.
+    tensor: (1, 3, H, W) in [-1, 1].
+    """
+    img = ((tensor + 1) * 127.5).clamp(0, 255).to(th.uint8)
+    img_np = img[0].permute(1, 2, 0).cpu().numpy().astype(np.float32)  # (H, W, 3) RGB
+    R, G, B = img_np[:, :, 0], img_np[:, :, 1], img_np[:, :, 2]
+    rg = np.abs(R - G)
+    yb = np.abs(0.5 * (R + G) - B)
+    std_rg = np.std(rg)
+    std_yb = np.std(yb)
+    mean_rg = np.mean(rg)
+    mean_yb = np.mean(yb)
+    return np.sqrt(std_rg ** 2 + std_yb ** 2) + 0.3 * np.sqrt(mean_rg ** 2 + mean_yb ** 2)
+
+
+def compute_identity_similarity(embedding, img1, img2):
+    """
+    ArcFace cosine similarity between two face images.
+    1.0 = same identity, 0.0 = different.
+    img1, img2: (1, 3, H, W) tensors in [-1, 1].
+    """
+    with th.no_grad():
+        e1 = embedding(F.interpolate(img1, (112, 112), mode="bilinear", antialias=True))
+        e2 = embedding(F.interpolate(img2, (112, 112), mode="bilinear", antialias=True))
+        sim = F.cosine_similarity(e1, e2, dim=1).item()
+    return sim
+
+
+def compute_image_metrics(output_tensor, task="restoration",
+                          embedding=None, ref_tensor=None, input_tensor=None):
+    """
+    Compute quality metrics for a single output image.
+    Returns a dict of metric_name -> value.
+
+    Metrics computed:
+      - sharpness:       always (no-reference)
+      - colorfulness:    for colorization / old_photo tasks
+      - identity_sim:    for ref_restoration (needs embedding + ref_tensor)
+    """
+    metrics = {"sharpness": compute_sharpness(output_tensor)}
+
+    if task in ("colorization", "old_photo_restoration"):
+        metrics["colorfulness"] = compute_colorfulness(output_tensor)
+
+    if task == "ref_restoration" and embedding is not None and ref_tensor is not None:
+        metrics["identity_sim"] = compute_identity_similarity(
+            embedding, output_tensor, ref_tensor
+        )
+
+    return metrics
+
+
+def aggregate_metrics(all_per_image_metrics):
+    """
+    Aggregate per-image metric dicts into averages.
+    Input: [{"sharpness": 100, "colorfulness": 45}, {"sharpness": 120, ...}, ...]
+    Returns: {"sharpness_avg": 110.0, "sharpness_min": 100.0, ...}
+    """
+    if not all_per_image_metrics:
+        return {}
+    keys = set()
+    for m in all_per_image_metrics:
+        keys.update(m.keys())
+    agg = {}
+    for k in sorted(keys):
+        values = [m[k] for m in all_per_image_metrics if k in m]
+        if values:
+            agg[f"{k}_avg"] = sum(values) / len(values)
+            agg[f"{k}_min"] = min(values)
+            agg[f"{k}_max"] = max(values)
+    return agg
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 def get_supported_tasks():
     return SUPPORTED_TASKS

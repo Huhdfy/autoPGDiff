@@ -12,8 +12,14 @@ Each experiment:
   1. You edit this file with your idea
   2. git commit with a descriptive message
   3. python train.py > run.log 2>&1
-  4. Extract results, log to results.tsv
-  5. Keep or discard based on avg_guidance_loss
+  4. Extract results: grep "^quality_score:" run.log
+  5. Log to results.tsv
+  6. Keep or discard based on quality_score (lower = better)
+
+PRIMARY METRIC:  quality_score = avg_guidance_loss / avg_sharpness
+  - Lower loss   → better constraint satisfaction
+  - Higher sharp → less blur, more detail
+  - quality_score balances both → the agent minimizes this
 """
 import os
 import sys
@@ -38,6 +44,7 @@ from prepare import (
     load_diffusion_model, load_restorer, load_arcface,
     load_image, load_mask, save_image,
     avg_grayscale, adaptive_instance_normalization, calc_mean_std,
+    compute_sharpness, compute_image_metrics, aggregate_metrics,
     get_supported_tasks, get_model_defaults,
 )
 
@@ -265,10 +272,16 @@ def build_model_kwargs(img_name, in_dir, task, guidance_scale, n, s_start, s_end
 
 def run_experiment(diffusion, guidance, images, out_dir, task, guidance_scale,
                    n, s_start, s_end, diffusion_steps, seed,
-                   in_dir, ref_dir=None, mask_dir=None, mask_images=None):
-    """Run inference on all images. Returns per-image timing and peak VRAM."""
+                   in_dir, ref_dir=None, mask_dir=None, mask_images=None,
+                   embedding=None):
+    """
+    Run inference on all images.
+    Returns (peak_vram_mb, per_image_seconds, per_image_metrics).
+    per_image_metrics: list of dicts with 'sharpness', 'colorfulness', 'identity_sim'.
+    """
     peak_vram_mb = 0
     per_image_seconds = []
+    per_image_metrics = []
 
     for idx, img_name in enumerate(images):
         t_img = time.time()
@@ -291,23 +304,59 @@ def run_experiment(diffusion, guidance, images, out_dir, task, guidance_scale,
         )
 
         save_image(sample, os.path.join(out_dir, img_name))
-        per_image_seconds.append(time.time() - t_img)
+        elapsed = time.time() - t_img
+        per_image_seconds.append(elapsed)
+
+        # ---- per-image quality metrics ----
+        ref_tensor = model_kwargs.get("ref", None)
+        metrics = compute_image_metrics(
+            sample, task=task, embedding=embedding,
+            ref_tensor=ref_tensor, input_tensor=model_kwargs.get("y", None),
+        )
+        per_image_metrics.append(metrics)
 
         if th.cuda.is_available():
             vram = th.cuda.max_memory_allocated() / (1024 * 1024)
             peak_vram_mb = max(peak_vram_mb, vram)
             th.cuda.reset_peak_memory_stats()
 
-    return peak_vram_mb, per_image_seconds
+    return peak_vram_mb, per_image_seconds, per_image_metrics
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# QUALITY SCORE  —  Composite metric the agent optimizes
+# ═══════════════════════════════════════════════════════════════════════════
+
+def compute_quality_score(avg_loss, per_image_metrics):
+    """
+    Composite quality score — the PRIMARY metric to minimize.
+
+    quality_score = avg_guidance_loss / avg_sharpness
+
+    Lower is better:
+      - Lower guidance loss  → better constraint satisfaction
+      - Higher sharpness      → less blur, more detail
+      - Loss / sharpness      → balances both in one number
+
+    For ref_restoration, identity_sim is also reported separately.
+    """
+    sharpness_vals = [m["sharpness"] for m in per_image_metrics]
+    if not sharpness_vals:
+        return float("inf"), 0.0
+    avg_sharpness = sum(sharpness_vals) / len(sharpness_vals)
+    quality_score = avg_loss / (avg_sharpness + 1e-8)
+    return quality_score, avg_sharpness
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # RECORDING / LOGGING
 # ═══════════════════════════════════════════════════════════════════════════
 
-def record_experiment(run_dir, commit_hash, avg_loss, num_images, total_seconds,
-                      peak_vram_mb, per_image_seconds, loss_breakdown, task,
-                      guidance_scale, weights, n, s_start, s_end,
+def record_experiment(run_dir, commit_hash, quality_score, avg_loss,
+                      num_images, total_seconds, peak_vram_mb,
+                      per_image_seconds, loss_breakdown, agg_metrics,
+                      per_image_metrics, task, guidance_scale,
+                      weights, n, s_start, s_end,
                       timestep_respacing, use_ddim, seed):
     """Write detailed per-experiment log to runs/<run_id>/."""
     os.makedirs(run_dir, exist_ok=True)
@@ -315,13 +364,24 @@ def record_experiment(run_dir, commit_hash, avg_loss, num_images, total_seconds,
     breakdown_str = ""
     for k, v in sorted(loss_breakdown.items()):
         if v:
-            breakdown_str += f"  {k:25s}: avg={sum(v)/len(v):.3f}  total={sum(v):.1f}  count={len(v)}\n"
+            avg = sum(v) / len(v)
+            breakdown_str += f"  {k:25s}: avg={avg:.3f}  total={sum(v):.1f}  count={len(v)}\n"
+
+    quality_str = ""
+    for k, v in sorted(agg_metrics.items()):
+        quality_str += f"  {k:25s}: {v:.3f}\n"
+
+    per_img_str = ""
+    for i, m in enumerate(per_image_metrics):
+        parts = ", ".join(f"{k}={v:.1f}" for k, v in sorted(m.items()))
+        per_img_str += f"  img_{i:02d}: {parts}\n"
 
     summary = f"""PGDiff Experiment Summary
 {'=' * 60}
 commit:             {commit_hash}
 started:            {time.strftime('%Y-%m-%d %H:%M:%S')}
 {'=' * 60}
+quality_score:      {quality_score:.3f}   <-- PRIMARY METRIC (lower = better)
 avg_guidance_loss:  {avg_loss:.3f}
 num_images:         {num_images}
 loss_per_image:     {avg_loss / num_images:.3f}
@@ -348,17 +408,25 @@ weights:
   op_lightness:     {weights.get('op_lightness_weight', 'N/A')}
   op_color:         {weights.get('op_color_weight', 'N/A')}
 {'=' * 60}
-loss breakdown (per-term averages):
+guidance loss breakdown (per-term averages):
 {breakdown_str}
+{'=' * 60}
+image quality metrics (aggregated):
+{quality_str}
+{'=' * 60}
+image quality metrics (per-image):
+{per_img_str}
 """
     with open(os.path.join(run_dir, "summary.txt"), "w") as f:
         f.write(summary)
 
 
-def print_results(avg_loss, num_images, total_seconds, peak_vram_mb, loss_breakdown):
+def print_results(quality_score, avg_loss, num_images, total_seconds,
+                  peak_vram_mb, loss_breakdown, agg_metrics, per_image_metrics):
     """Print parseable results for the agent to grep."""
     print()
     print("---")
+    print(f"quality_score:       {quality_score:.3f}   <-- PRIMARY (lower = better)")
     print(f"avg_guidance_loss:   {avg_loss:.3f}")
     print(f"num_images:          {num_images}")
     print(f"loss_per_image:      {avg_loss / num_images:.3f}")
@@ -370,6 +438,8 @@ def print_results(avg_loss, num_images, total_seconds, peak_vram_mb, loss_breakd
     print(f"timestep_respacing:  {'ddpm1000' if not TIMESTEP_RESPACING else TIMESTEP_RESPACING}")
     print(f"use_ddim:            {USE_DDIM}")
     print(f"seed:                {SEED}")
+    for k, v in sorted(agg_metrics.items()):
+        print(f"{k}:             {v:.3f}")
     for k, v in sorted(loss_breakdown.items()):
         if v:
             print(f"loss_{k}:          {sum(v)/len(v):.3f}")
@@ -470,14 +540,17 @@ def main():
         mask_images = set(os.listdir(MASK_DIR))
 
     # ---- run inference ----
-    peak_vram_mb, per_image_seconds = run_experiment(
+    peak_vram_mb, per_image_seconds, per_image_metrics = run_experiment(
         diffusion, guidance, lr_images, OUT_DIR, TASK, GUIDANCE_SCALE,
         N, S_START, S_END, DIFFUSION_STEPS, SEED,
         IN_DIR, REF_DIR, MASK_DIR, mask_images,
+        embedding=embedding,
     )
 
     # ---- compute metrics ----
     avg_loss = guidance.avg_loss()
+    quality_score, avg_sharpness = compute_quality_score(avg_loss, per_image_metrics)
+    agg_metrics = aggregate_metrics(per_image_metrics)
     total_seconds = time.time() - t_start
 
     # ---- record if part of experiment loop ----
@@ -487,15 +560,18 @@ def main():
                        if os.path.isdir(os.path.join(RUNS_DIR, d))]) + 1
         run_dir = os.path.join(RUNS_DIR, f"exp_{exp_num:03d}")
         record_experiment(
-            run_dir, commit_hash, avg_loss, len(lr_images), total_seconds,
-            peak_vram_mb, per_image_seconds, guidance.loss_breakdown,
+            run_dir, commit_hash, quality_score, avg_loss,
+            len(lr_images), total_seconds, peak_vram_mb,
+            per_image_seconds, guidance.loss_breakdown, agg_metrics,
+            per_image_metrics,
             TASK, GUIDANCE_SCALE, weights, N, S_START, S_END,
             TIMESTEP_RESPACING, USE_DDIM, SEED,
         )
 
     # ---- print results ----
-    print_results(avg_loss, len(lr_images), total_seconds,
-                  peak_vram_mb, guidance.loss_breakdown)
+    print_results(quality_score, avg_loss, len(lr_images), total_seconds,
+                  peak_vram_mb, guidance.loss_breakdown,
+                  agg_metrics, per_image_metrics)
 
 
 if __name__ == "__main__":

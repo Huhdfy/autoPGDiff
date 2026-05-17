@@ -1,8 +1,29 @@
 # PGDiff autoresearch
 
-Autonomous AI-driven research on the PGDiff face restoration pipeline. The agent
-iterates on guidance strategies, loss formulations, task compositions, and
-sampling approaches — not just hyperparameters.
+Autonomous AI-driven research on the PGDiff face restoration pipeline.
+The agent iterates on guidance strategies, loss formulations, task compositions, and
+sampling approaches. **Innovation is required — don't just tune hyperparameters.**
+
+## Evaluation metric
+
+**Primary metric: `quality_score`** (lower = better)
+
+```
+quality_score = avg_guidance_loss / avg_sharpness
+```
+
+| Component | Meaning | Direction |
+|-----------|---------|-----------|
+| `avg_guidance_loss` | How well the output satisfies task constraints (MSE to restorer, color stats, etc.) | Lower = better |
+| `avg_sharpness` | Laplacian variance of output images — proxy for detail preservation | Higher = better |
+| `quality_score` | Composite: balances constraint satisfaction with sharpness | **Lower = better** |
+
+Additional metrics also reported:
+- `colorfulness` — for colorization/old-photo tasks (higher = more vivid)
+- `identity_sim` — for ref_restoration (ArcFace cosine similarity, 0-1, higher = same person)
+- Per-term loss breakdown (smooth_semantics, color_lightness, etc.)
+
+**Why this works**: Pure guidance loss can be gamed (extreme scales produce artifacts that still have low loss). Sharpness penalizes blurry/artifact-ridden outputs. The composite score rewards both fidelity to constraints AND natural image quality.
 
 ## Setup
 
@@ -12,188 +33,119 @@ To set up a new experiment run:
 2. **Create the branch**: `git checkout -b autoresearch/<tag>` from current master.
 3. **Read the in-scope files** for full context:
    - `README.md` — PGDiff project overview.
-   - `prepare.py` — immutable infrastructure: model loading, image I/O, AdaIN helpers. Do NOT modify.
-   - `train.py` — the file you modify. Contains: hyperparameters, PartialGuidance class, model_fn, sampling pipeline, recording system.
+   - `prepare.py` — immutable: model loading, I/O, AdaIN, quality metrics. Do NOT modify.
+   - `train.py` — the file you modify. **Everything** in it is fair game.
    - `inference_pgdiff.py` — original PGDiff inference script (reference).
 4. **Verify models and data exist**. If not, tell the human.
-5. **Initialize results.tsv**: Create with header row (see format below). Baseline recorded after first run.
+5. **Initialize results.tsv**: Create with header row. Baseline after first run.
 6. **Confirm and go**.
 
-Once confirmed, begin the experiment loop.
+## What you CAN modify (in train.py) — aim for INNOVATION
 
-## What you CAN modify (in train.py)
-
-**Hyperparameters** (top of file):
+**Hyperparameters** (for warmup — but don't stop here):
 - `TASK`, `GUIDANCE_SCALE`, all task weights
-- `N`, `S_START`, `S_END` — multi-step guidance
-- `TIMESTEP_RESPACING`, `USE_DDIM` — sampling strategy
-- `DIFFUSION_STEPS`, `SEED`, paths
+- `N`, `S_START`, `S_END`, `TIMESTEP_RESPACING`, `USE_DDIM`
 
-**PartialGuidance class** — This is the CORE of PGDiff. Modify freely:
-- Add new loss terms (perceptual loss, adversarial loss, TV regularization, etc.)
-- Change loss formulations (L1 vs MSE, cosine vs MSE for identity, etc.)
-- Add entirely new tasks (e.g., face super-resolution, deblurring, style transfer)
-- Modify gradient scaling (e.g., per-channel coefficient, adaptive scaling)
-- Add task routing logic (composite tasks that combine multiple losses)
-- Change how `fake_g_output` (restorer target) is computed
-- Experiment with different normalization or feature spaces
+**PartialGuidance class** — Where the real innovation happens:
+- **Add new loss terms**: perceptual loss (LPIPS), adversarial loss, edge preservation (Sobel), total variation regularization, Laplacian pyramid loss, frequency-domain losses, contrastive losses
+- **Change loss formulations**: L1 vs MSE, Huber loss, cosine vs MSE for identity, learnable loss weights, loss scheduling (different weights at different timesteps)
+- **Add entirely new tasks**: face super-resolution, deblurring, denoising, face editing, expression transfer, makeup transfer, style mixing
+- **Change the guidance strategy**: classifier-free guidance style instead of gradient-based, alternating guidance, adaptive guidance scale per timestep, guidance annealing
+- **Modify how gradients are applied**: per-channel scaling, gradient clipping, momentum in gradient steps, learned gradient correction
+- **Change the restorer interaction**: feed different inputs to restorer, ensemble multiple restorers, skip restorer at certain timesteps
 
 **model_fn** — How the diffusion model is called:
-- Change conditioning strategy (pass features instead of raw images)
-- Add ensemble strategies (multiple model calls)
-- Modify input preprocessing
+- Multi-model ensembles, conditional injection strategies
 
 **Sampling pipeline** (`run_experiment`):
-- Change the sampling loop (e.g., progressive refinement)
-- Add post-processing steps
-- Add additional metrics computation
-- Modify how images are batched or ordered
+- Progressive refinement, iterative sampling, different noise schedules
+- Post-processing chains (sharpening, color correction)
 
-**Recording system** (`record_experiment`, `print_results`):
-- Add new tracked metrics
-- Change output format
+**Quality metrics** (add your own):
+- Add new metrics to `compute_quality_score` or `compute_image_metrics`
+- Change the composite formula to better capture your goals
 
 ## What you CANNOT do
 
-- Modify `prepare.py`. It is read-only.
-- Install new packages beyond `requirements.txt`.
-- Modify files outside `autoresearch/`.
-- Modify the base diffusion model weights.
-
-## The goal
-
-**Minimize `avg_guidance_loss`** — the average partial guidance loss across all
-timesteps and images. Lower = output better satisfies task constraints.
-
-The loss is task-specific and directly measures quality:
-- Restoration: distance to smooth semantics (restorer output)
-- Colorization: lightness fidelity + color naturalness
-- Inpainting: unmasked region preservation
-- Ref-restoration: smooth semantics + identity embedding proximity
-- Old-photo: composite (lightness + color on valid pixels)
+- Modify `prepare.py`
+- Install packages beyond `requirements.txt`
+- Modify files outside `autoresearch/`
 
 ## Every change MUST be recorded
 
-This is critical. Every experiment leaves a complete paper trail:
-
-### 1. Git commit message (REQUIRED, detailed)
+### 1. Git commit message (detailed, required)
 ```
-<concise summary of what was changed and why>
+<concise summary>
 
-- What: [specific code change, not vague]
-- Why: [hypothesis — why this should improve loss]
-- Expected: [what you expect to happen to avg_guidance_loss]
+- What: [specific code change]
+- Why: [hypothesis — why this improves quality_score]
+- Expected: [what you expect to happen to quality_score and sub-metrics]
 ```
-
-Example GOOD commit:
-```
-Add perceptual LPIPS loss term to restoration guidance
-
-- What: Added LPIPS-based perceptual loss between restorer output
-  and pred_xstart, weighted at 0.1 relative to MSE
-- Why: MSE alone favors blurry outputs; perceptual loss should
-  preserve texture details better
-- Expected: avg_guidance_loss may stay similar but output quality
-  should improve (if we had visual eval); loss breakdown will
-  show new "perceptual" term
-```
-
-Example BAD commit: `try something` or `tune weights`
 
 ### 2. Per-run log (automatic)
-When `RUN_TAG` is set in train.py, each experiment writes a detailed log to
-`runs/exp_NNN/summary.txt` containing:
-- Full hyperparameter snapshot
-- Loss breakdown per term
-- Timing and VRAM stats
-- Git commit hash
+When `RUN_TAG` is set, each experiment writes `runs/exp_NNN/summary.txt` with:
+- Full hyperparameter snapshot, loss breakdown per term, per-image quality metrics
 
-### 3. results.tsv entry (REQUIRED)
-Tab-separated, 8 columns:
-
+### 3. results.tsv (tab-separated, 10 columns)
 ```
-commit	avg_loss	loss_per_image	task	status	description	key_params	loss_breakdown
-```
-
-| Column | Description |
-|--------|-------------|
-| `commit` | 7-char git hash |
-| `avg_loss` | Average guidance loss (0.0 for crashes) |
-| `loss_per_image` | avg_loss / num_images (0.0 for crashes) |
-| `task` | Task name |
-| `status` | `keep` / `discard` / `crash` |
-| `description` | Brief description of what was tried |
-| `key_params` | Key hyperparams snapshot (e.g. "s=0.15,ss=1.0,N=3") |
-| `loss_breakdown` | Per-term losses (e.g. "smooth_semantics:1234.5") |
-
-Example:
-```
-a1b2c3d	1245.6	103.8	restoration	keep	baseline (s=0.1, ss=1.0, N=1)	s=0.1,ss=1.0,N=1	smooth_semantics:1245.6
-b2c3d4e	1102.3	91.9	restoration	keep	add LPIPS perceptual loss	w=0.1	s=0.1,ss=1.0,lpips=0.1	smooth_semantics:892.1,lpips:210.2
+commit	quality_score	avg_loss	avg_sharpness	loss_per_image	task	status	description	key_params	loss_breakdown
 ```
 
 ## The experiment loop
 
 LOOP FOREVER:
 
-1. **Survey state**: current git branch/commit. Read the last few lines of `results.tsv` to see what's been tried recently. Check `runs/` for detailed logs of past experiments.
-2. **Form hypothesis**: what change might reduce avg_guidance_loss? Why?
-3. **Implement**: edit `train.py` (hyperparameters, PartialGuidance, model_fn, or pipeline).
-4. **Commit**: `git commit` with a DETAILED message (what, why, expected).
-5. **Run**: `python train.py > run.log 2>&1` (no tee, no flooding).
-6. **Extract**: `grep "^avg_guidance_loss:" run.log`
-7. **Handle crashes**: If grep output empty → `tail -50 run.log` → fix trivial bugs or log as "crash".
-8. **Log to results.tsv**: append the 8-column row. Do NOT commit results.tsv.
+1. **Survey state**: current git commit. Read last few lines of `results.tsv`. Check `runs/` for detailed logs. Look for patterns — what worked, what didn't.
+2. **Form hypothesis**: what change might reduce quality_score? Why?
+3. **Implement**: edit `train.py`.
+4. **Commit**: `git commit` with detailed message.
+5. **Run**: `python train.py > run.log 2>&1`
+6. **Extract**: `grep "^quality_score:\|^num_images:" run.log`
+7. **Handle crashes**: if grep empty → `tail -50 run.log` → fix or log crash.
+8. **Log to results.tsv**: append the 10-column row. NEVER commit results.tsv.
 9. **Decide**:
-   - **Improved** (lower avg_loss) → advance branch (keep commit)
-   - **Same or worse** → `git reset --soft HEAD~1` (discard commit)
-   - **Crash** → `git reset --hard HEAD~1` (discard broken code)
-10. **Record detail**: ensure `runs/exp_NNN/summary.txt` was written.
+   - **quality_score improved** (lower) → keep commit, advance branch
+   - **Same or worse** → `git reset --soft HEAD~1`
+   - **Crash** → `git reset --hard HEAD~1`
 
-## Experiment ideas — start here when stuck
+## Innovation ideas — USE THESE as starting points
 
-### Hyperparameter sweeps (baseline exploration)
-- Sweep guidance_scale: 0.01, 0.05, 0.1, 0.15, 0.2, 0.3, 0.5 for current task
-- Vary N=1,2,3,5 with different S_START/S_END ranges
-- Try DDIM with 25, 50, 100, 200 steps vs full DDPM
-- Test weight ratios (e.g., colorization: vary lightness_weight/color_weight ratio)
+### Architecture-level changes
+- Replace the restorer network with a different backbone (swinIR, NAFNet)
+- Add a learned guidance network that predicts optimal gradient direction
+- Implement classifier-free guidance by training a conditional score estimator
+- Add attention-based feature matching between input and output
 
-### Loss function experiments
-- Replace MSE with L1 loss for restoration (smoother gradients?)
-- Add Total Variation regularization to penalize artifacts
-- Add Laplacian pyramid loss for multi-scale supervision
-- Use cosine similarity instead of MSE for identity (ref_restoration)
-- Add edge-preservation loss (Sobel gradient matching)
-- Experiment with loss normalization (divide by spatial dims vs reduction='sum')
+### Loss function innovation
+- Add LPIPS perceptual loss between restorer output and pred_xstart
+- Add facial landmark consistency loss (detect landmarks, penalize drift)
+- Add GAN-style adversarial loss (train a small discriminator on the fly)
+- Add frequency-domain loss (FFT-based, penalize high-freq artifacts)
+- Add self-supervised consistency loss (different seeds → same identity)
 
-### Architecture of guidance
-- Try classifier-free guidance style instead of gradient-based guidance
-- Add a learned guidance network that predicts the gradient
-- Use different guidance scales at different timesteps (schedule)
-- Try alternating guidance (apply guidance only every K steps)
-- Experiment with gradient clipping or normalization
+### Guidance strategy innovation
+- Schedule guidance scale s(t) = s0 * f(t/T) with different decay functions
+- Apply guidance only on early/middle/late timesteps and compare
+- Use different guidance scales per channel (R, G, B)
+- Add momentum to gradient steps across timesteps
+- Implement trust-region guidance (clip gradient if step too large)
 
-### New tasks
-- Define a "face super-resolution" task (upsample + restore)
-- Define a "deblurring" task by adding blur-aware losses
-- Define a "face editing" task (guidance toward specific attributes)
-- Create a "best of all" composite task that combines multiple constraints
+### Task innovation
+- Define a "best of both" task: restoration + colorization simultaneously
+- Define a "face hallucination" task: 64×64 → 512×512 super-resolution
+- Define a "de-aging" task by guiding toward a younger reference embedding
 
-### Sampling innovations
-- Try different noise schedules during sampling
-- Experiment with warm-up (no guidance for first K steps)
-- Try iterative refinement: sample → guide → re-sample
-- Use ensemble of different guidance strategies and average
+### Sampling innovation
+- Try stochastic DDIM (eta > 0) vs deterministic
+- Implement restarted sampling (sample N times, pick best by sharpness)
+- Try different noise schedules (cosine instead of linear)
+- Implement coarse-to-fine: first sample at low res, then refine at high res
 
 ## Timeouts and crashes
-
-- Each experiment should complete within ~15 min. Kill if >20 min.
-- Crashes: trivial bugs (typo, None ref) → fix and re-run. Broken ideas → log crash, move on.
-- NaN loss: `git reset --hard`, log as crash, move on.
+- Max ~15 min per experiment. Kill if >20 min.
+- Trivial bugs → fix and re-run. Broken ideas → log crash, move on.
+- NaN → git reset --hard, log crash.
 
 ## NEVER STOP
-
-Once the experiment loop begins, do NOT ask the human if you should continue.
-Work indefinitely until manually interrupted. Run ~12 experiments/hour, ~100 per
-sleep cycle. If stuck, try bigger changes — modify the loss functions, add new
-tasks, experiment with the guidance architecture itself.
+Run indefinitely. ~12 experiments/hour, ~100 per sleep cycle.
+If stuck, try BIGGER changes — architectural innovations, not just parameter sweeps.
