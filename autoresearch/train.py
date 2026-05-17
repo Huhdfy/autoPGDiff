@@ -66,7 +66,7 @@ GRAD_MOMENTUM = 0.0      # 0 = no momentum (improves quality at full 1000 steps)
 REF_WEIGHT = 25.0
 OP_LIGHTNESS_WEIGHT = 1.0
 OP_COLOR_WEIGHT = 0.5
-RESIDUAL_BLEND = 0.4        # post-processing: blend input HF detail into output (0=disable)
+RESIDUAL_BLEND = 1.0        # stronger blend
 
 # --- multi-step guidance ---
 N = 1                # gradient steps per timestep (>1 = stronger guidance)
