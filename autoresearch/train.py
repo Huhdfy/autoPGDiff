@@ -53,7 +53,7 @@ from prepare import (
 # ═══════════════════════════════════════════════════════════════════════════
 
 TASK = "restoration"
-GUIDANCE_SCALE = 1.0      # ddpm200 needs ~5x scale to compensate for fewer steps
+GUIDANCE_SCALE = 0.1
 SEED = 1234
 
 # --- task weights ---
@@ -73,7 +73,7 @@ S_START = 1.0        # start fraction of T (e.g. 1.0 = from t=T)
 S_END = 0.7          # end fraction of T (e.g. 0.7 = until 0.7T)
 
 # --- sampling ---
-TIMESTEP_RESPACING = "ddpm200"   # "" = full 1000 steps, "ddim25" = 25 DDIM steps
+TIMESTEP_RESPACING = ""   # "" = full 1000 steps, "ddpm200" = 200 steps
 USE_DDIM = False
 CLIP_DENOISED = True
 BATCH_SIZE = 1
