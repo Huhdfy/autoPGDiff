@@ -186,8 +186,8 @@ class PartialGuidance:
                     fake_g_output = fake_g_output.detach().requires_grad_(True).cuda()
                 else:
                     fake_g_output = target.detach().requires_grad_(True).cuda()
-                loss_s = F.mse_loss(
-                    fake_g_output, pred_xstart_in, reduction="sum"
+                loss_s = F.smooth_l1_loss(
+                    fake_g_output, pred_xstart_in, reduction="sum", beta=1.0
                 ) * self.w.get("ss_weight", 1.0)
                 self._track("smooth_semantics", loss_s.item())
                 total_loss = total_loss + loss_s
