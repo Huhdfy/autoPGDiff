@@ -66,6 +66,7 @@ GRAD_MOMENTUM = 0.0      # 0 = no momentum (improves quality at full 1000 steps)
 REF_WEIGHT = 25.0
 OP_LIGHTNESS_WEIGHT = 1.0
 OP_COLOR_WEIGHT = 0.5
+RESIDUAL_BLEND = 0.4        # post-processing: blend input HF detail into output (0=disable)
 
 # --- multi-step guidance ---
 N = 1                # gradient steps per timestep (>1 = stronger guidance)
@@ -246,9 +247,6 @@ class PartialGuidance:
             total_loss = total_loss * schedule
 
             gradient = th.autograd.grad(total_loss, pred_xstart_in)[0]
-            # Gradient clipping: prevent extreme single-step corrections
-            grad_clamp = 1.0   # strong clipping
-            gradient = gradient.clamp(-grad_clamp, grad_clamp)
             if self.prev_gradient is not None:
                 momentum = self.w.get("grad_momentum", 0.9)
                 gradient = momentum * self.prev_gradient + (1 - momentum) * gradient
@@ -345,6 +343,14 @@ def run_experiment(diffusion, guidance, images, out_dir, task, guidance_scale,
             device=device(),
             seed=seed,
         )
+
+        # ── Residual post-processing: blend input high-frequency detail ──
+        if RESIDUAL_BLEND > 0:
+            y_input = model_kwargs.get("y")
+            if y_input is not None:
+                y_blur = F.avg_pool2d(y_input, 15, stride=1, padding=7)
+                hf_detail = (y_input - y_blur) * RESIDUAL_BLEND
+                sample = (sample + hf_detail).clamp(-1, 1)
 
         save_image(sample, os.path.join(out_dir, img_name))
         elapsed = time.time() - t_img
