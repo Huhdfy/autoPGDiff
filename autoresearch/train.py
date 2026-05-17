@@ -247,7 +247,7 @@ class PartialGuidance:
 
             gradient = th.autograd.grad(total_loss, pred_xstart_in)[0]
             # Gradient clipping: prevent extreme single-step corrections
-            grad_clamp = 5.0  # max absolute gradient value per pixel
+            grad_clamp = 1.0   # strong clipping
             gradient = gradient.clamp(-grad_clamp, grad_clamp)
             if self.prev_gradient is not None:
                 momentum = self.w.get("grad_momentum", 0.9)
