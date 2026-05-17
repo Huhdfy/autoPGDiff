@@ -61,6 +61,7 @@ LIGHTNESS_WEIGHT = 1.0
 COLOR_WEIGHT = 0.05
 UNMASKED_WEIGHT = 1.0
 SS_WEIGHT = 1.0
+EDGE_WEIGHT = 0.02       # edge preservation loss weight
 REF_WEIGHT = 25.0
 OP_LIGHTNESS_WEIGHT = 1.0
 OP_COLOR_WEIGHT = 0.5
@@ -71,7 +72,7 @@ S_START = 1.0        # start fraction of T (e.g. 1.0 = from t=T)
 S_END = 0.7          # end fraction of T (e.g. 0.7 = until 0.7T)
 
 # --- sampling ---
-TIMESTEP_RESPACING = ""   # "" = full 1000 steps, "ddim25" = 25 DDIM steps
+TIMESTEP_RESPACING = "ddpm200"   # "" = full 1000 steps, "ddim25" = 25 DDIM steps
 USE_DDIM = False
 CLIP_DENOISED = True
 BATCH_SIZE = 1
@@ -88,8 +89,23 @@ RESTORER_PATH = "models/restorer/rrdb_iter_100000.pth"
 ARCFACE_PATH = "models/ms1mv3_arcface_r50_fp16.pth"
 
 # --- recording ---
-RUN_TAG = ""          # set by the experiment loop; leave empty for manual runs
+RUN_TAG = "may17_v2"  # set by the experiment loop; leave empty for manual runs
 RUNS_DIR = "runs"     # per-experiment detailed logs stored here
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Helper: Sobel edge maps  —  used by edge-preservation loss
+# ═══════════════════════════════════════════════════════════════════════════
+
+def sobel_edges(img):
+    """Compute Sobel gradient magnitude for each channel.
+    img: (1, 3, H, W) in [-1, 1]. Returns (1, 3, H, W) edge magnitude maps."""
+    kernel_x = th.tensor([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]], dtype=th.float32, device=img.device).view(1, 1, 3, 3)
+    kernel_y = th.tensor([[-1, -2, -1], [0, 0, 0], [1, 2, 1]], dtype=th.float32, device=img.device).view(1, 1, 3, 3)
+    img_gray = img.mean(dim=1, keepdim=True)  # (1, 1, H, W)
+    grad_x = F.conv2d(F.pad(img_gray, (1, 1, 1, 1), mode='replicate'), kernel_x)
+    grad_y = F.conv2d(F.pad(img_gray, (1, 1, 1, 1), mode='replicate'), kernel_y)
+    mag = th.sqrt(grad_x ** 2 + grad_y ** 2 + 1e-8)
+    return mag
 
 # ═══════════════════════════════════════════════════════════════════════════
 # PARTIAL GUIDANCE  —  Edit freely: add loss terms, modify strategies
@@ -172,6 +188,14 @@ class PartialGuidance:
                 ) * self.w.get("ss_weight", 1.0)
                 self._track("smooth_semantics", loss_s.item())
                 total_loss = total_loss + loss_s
+
+                edge_target = sobel_edges(fake_g_output)
+                edge_pred = sobel_edges(pred_xstart_in)
+                loss_e = F.l1_loss(
+                    edge_pred, edge_target, reduction="sum"
+                ) * self.w.get("edge_weight", 0.02)
+                self._track("edge_preservation", loss_e.item())
+                total_loss = total_loss + loss_e
 
             # ── ref_restoration (identity) ──
             if task == "ref_restoration":
@@ -485,6 +509,7 @@ def main():
         color_weight=COLOR_WEIGHT,
         unmasked_weight=UNMASKED_WEIGHT,
         ss_weight=SS_WEIGHT,
+        edge_weight=EDGE_WEIGHT,
         ref_weight=REF_WEIGHT,
         op_lightness_weight=OP_LIGHTNESS_WEIGHT,
         op_color_weight=OP_COLOR_WEIGHT,
