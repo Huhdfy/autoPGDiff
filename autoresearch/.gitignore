@@ -1,0 +1,37 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+worktrees/
+results/
+queue/
+
+# Agent prompt files (generated per-session by launchers)
+CLAUDE.md
+AGENTS.md
+
+# Experimental code/artifacts
+dev/
+
+# Results file
+results.tsv
+
+# Experiment logs
+run.log
+*.log
+
+# Per-experiment detailed logs
+runs/
+
+# Output images
+results/
+
+# Analysis artifacts
+progress.png
+progress_by_task.png
