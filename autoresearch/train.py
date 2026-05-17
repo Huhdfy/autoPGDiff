@@ -234,6 +234,12 @@ class PartialGuidance:
 
             # ── add new tasks / loss terms here ──
 
+            # ── Timestep-dependent guidance scheduling ──
+            # Linear decay: strong guidance at high t (structure), weaker at low t (details)
+            t_frac = t[0].item() / DIFFUSION_STEPS
+            schedule = 0.3 + 0.7 * t_frac  # ranges from ~1.0 (t=T) to ~0.3 (t=0)
+            total_loss = total_loss * schedule
+
             gradient = th.autograd.grad(total_loss, pred_xstart_in)[0]
             if task in ("inpainting", "old_photo_restoration"):
                 gradient[mask > 0] = 0
