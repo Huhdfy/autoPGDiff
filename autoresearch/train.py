@@ -53,7 +53,7 @@ from prepare import (
 # ═══════════════════════════════════════════════════════════════════════════
 
 TASK = "restoration"
-GUIDANCE_SCALE = 0.1
+GUIDANCE_SCALE = 1.0      # ddpm200 needs ~5x scale to compensate for fewer steps
 SEED = 1234
 
 # --- task weights ---
