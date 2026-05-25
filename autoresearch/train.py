@@ -61,7 +61,7 @@ from prepare import (
 # ═══════════════════════════════════════════════════════════════════════════
 
 TASK = "restoration"
-GUIDANCE_SCALE = 0.1
+GUIDANCE_SCALE = 0.0
 SEED = 1234
 
 # --- task weights ---
@@ -79,7 +79,7 @@ RESIDUAL_BLEND = 0.5        # output = (sample + input * blend) / (1 + blend) �
 # --- multi-step guidance ---
 N = 1                # gradient steps per timestep (>1 = stronger guidance)
 S_START = 1.0        # start fraction of T (e.g. 1.0 = from t=T)
-S_END = 0.7          # end fraction of T (e.g. 0.7 = until 0.7T)
+S_END = 0.0          # end fraction of T (e.g. 0.7 = until 0.7T)
 
 # --- sampling ---
 TIMESTEP_RESPACING = ""   # full 1000 steps
@@ -95,14 +95,17 @@ IN_DIR = "../testdata/cropped_faces"
 MAX_IMAGES = 1
 # Speed optimization flags
 BLOCK_UNET_GRAD = True   # True: restorer outside enable_grad
-USE_DPMSOLVER = True     # True: use DPM-Solver-2 (higher-order ODE, fewer steps)
-DPM_SOLVER_STEPS = 500     # number of DPM-Solver steps (if USE_DPMSOLVER=True)
+USE_DPMSOLVER = False     # True: use DPM-Solver-2 (higher-order ODE, fewer steps)
+DPM_SOLVER_STEPS = 35     # number of DPM-Solver steps (if USE_DPMSOLVER=True)
 RESTORER_T_ZERO = False   # True: call restorer with t=0 (test t-conditioning)
 DPM_FIRST_ORDER = False   # True: skip 2nd-order correction in DPM-Solver
 CONSTANT_SCHEDULE = False # True: disable linear schedule, use schedule=1.0
 HYBRID_MODE = False       # True: DPM coarse + DDPM refine
 HYBRID_SWITCH_T = 400     # timestep to switch from DPM to DDPM
 REFINE_STEPS = 50         # DDPM steps in refinement phase (if HYBRID_MODE)
+GUIDANCE_EVERY_K = 1      # run guidance every K steps (1=every step, 5=sparse)
+SKIP_ZERO_SCALE = True    # True: skip guidance when scale=0 (saves restorer+grad)
+USE_FP16 = False          # True: run UNet in float16
 OUT_DIR = "../results/experiment"
 REF_DIR = None
 MASK_DIR = None
@@ -175,8 +178,21 @@ class PartialGuidance:
                  ref=None, mask=None, task="restoration", scale=0,
                  N=1, s_start=1, s_end=0.7):
         assert y is not None
-        fake_g_output = None
         self.guidance_calls += 1
+
+        # ── Skip logic: scale=0 or sparse guidance ──
+        if SKIP_ZERO_SCALE and scale == 0:
+            self.losses.append(0.0)
+            return th.zeros_like(pred_xstart if pred_xstart is not None else x), None
+        if GUIDANCE_EVERY_K > 1 and (self.guidance_calls % GUIDANCE_EVERY_K) != 0:
+            self.losses.append(0.0)
+            return th.zeros_like(pred_xstart if pred_xstart is not None else x), None
+        if GUIDANCE_EARLY_STOP:
+            if t[0].item() < int(s_end):
+                self.losses.append(0.0)
+                return th.zeros_like(pred_xstart if pred_xstart is not None else x), None
+
+        fake_g_output = None
 
         # ── restorer forward (position depends on BLOCK_UNET_GRAD) ──
         if "restoration" in task:
@@ -891,6 +907,9 @@ def main():
     # ---- load models ----
     print("Loading diffusion model...")
     model, diffusion = load_diffusion_model(MODEL_PATH)
+    if USE_FP16:
+        model = model.half()
+        print("  UNet converted to fp16")
 
     restorer = None
     embedding = None
