@@ -183,14 +183,14 @@ class PartialGuidance:
                     fake_g_output = self.restorer(x, y_t=y, t=t).clamp(-1, 1).cuda()
 
         with th.enable_grad():
-            pred_xstart_in = pred_xstart.detach().requires_grad_(True)
+            pred_xstart_in = pred_xstart.detach().requires_grad_(True) if pred_xstart is not None else x.detach().requires_grad_(True)
             total_loss = th.tensor(0.0, device=x.device)
 
             # ── restorer for baseline (inside enable_grad = builds graph, more VRAM) ──
             if "restoration" in task and not BLOCK_UNET_GRAD and fake_g_output is None:
                 self.restorer_calls += 1
                 fake_g_output = self.restorer(x, y_t=y, t=t).clamp(-1, 1).cuda()
-            pred_xstart_in = pred_xstart.detach().requires_grad_(True)
+            pred_xstart_in = pred_xstart.detach().requires_grad_(True) if pred_xstart is not None else x.detach().requires_grad_(True)
             total_loss = th.tensor(0.0, device=x.device)
 
             # ── colorization ──
@@ -249,7 +249,7 @@ class PartialGuidance:
             # ── old_photo_restoration (composite) ──
             if task == "old_photo_restoration":
                 total_loss = th.tensor(0.0, device=x.device)
-                pred_xstart_in = pred_xstart.detach().requires_grad_(True)
+                pred_xstart_in = pred_xstart.detach().requires_grad_(True) if pred_xstart is not None else x.detach().requires_grad_(True)
                 fake_g_output = fake_g_output.detach().requires_grad_(True)
 
                 loss_opl = F.mse_loss(
