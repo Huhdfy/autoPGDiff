@@ -69,7 +69,7 @@ LIGHTNESS_WEIGHT = 1.0
 COLOR_WEIGHT = 0.05
 UNMASKED_WEIGHT = 1.0
 SS_WEIGHT = 1.0
-EDGE_WEIGHT = 0.02         # 0 = ablation: remove edge preservation
+EDGE_WEIGHT = 0.0         # 0 = ablation: remove edge preservation
 GRAD_MOMENTUM = 0.0      # 0 = no momentum (improves quality at full 1000 steps)
 REF_WEIGHT = 25.0
 OP_LIGHTNESS_WEIGHT = 1.0
@@ -79,11 +79,11 @@ RESIDUAL_BLEND = 0.5        # output = (sample + input * blend) / (1 + blend) â€
 # --- multi-step guidance ---
 N = 2                # gradient steps per timestep (>1 = stronger guidance)
 S_START = 1.0        # start fraction of T (e.g. 1.0 = from t=T)
-S_END = 0.7          # end fraction of T (e.g. 0.7 = until 0.7T)
+S_END = 0.5          # end fraction of T (e.g. 0.7 = until 0.7T)
 
 # --- sampling ---
-TIMESTEP_RESPACING = "ddpm20"   # full 1000 steps
-USE_DDIM = True
+TIMESTEP_RESPACING = ""   # full 1000 steps
+USE_DDIM = False
 CLIP_DENOISED = True
 BATCH_SIZE = 1
 IMAGE_SIZE = 512
@@ -95,8 +95,8 @@ IN_DIR = "../testdata/cropped_faces"
 MAX_IMAGES = 1
 # Speed optimization flags
 BLOCK_UNET_GRAD = True   # True: restorer outside enable_grad
-USE_DPMSOLVER = False     # True: use DPM-Solver-2 (higher-order ODE, fewer steps)
-DPM_SOLVER_STEPS = 50     # number of DPM-Solver steps (if USE_DPMSOLVER=True)
+USE_DPMSOLVER = True     # True: use DPM-Solver-2 (higher-order ODE, fewer steps)
+DPM_SOLVER_STEPS = 35     # number of DPM-Solver steps (if USE_DPMSOLVER=True)
 OUT_DIR = "../results/experiment"
 REF_DIR = None
 MASK_DIR = None
