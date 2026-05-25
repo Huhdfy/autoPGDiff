@@ -61,7 +61,7 @@ from prepare import (
 # ═══════════════════════════════════════════════════════════════════════════
 
 TASK = "restoration"
-GUIDANCE_SCALE = 1.0
+GUIDANCE_SCALE = 5.0
 SEED = 1234
 
 # --- task weights ---
