@@ -1,3 +1,5 @@
 __pycache__/
 /models/
-/results/
+autoresearch/run_accel_experiments.py
+autoresearch/run_accel_v2.py
+autoresearch/run_controls.py

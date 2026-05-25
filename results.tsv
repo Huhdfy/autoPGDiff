@@ -1,0 +1,9 @@
+commit	quality_score	avg_loss	avg_sharpness	loss_per_image	task	status	description	key_params	loss_breakdown
+926c066	5.943	646029.074	108712.750	53835.756	restoration	keep	Add Sobel edge-preservation loss to restoration guidance	s=0.1,N=1,steps=200,edge_w=0.02	smooth_semantics:637316.667,edge_preservation:8712.407
+e78e3af	3.810	414774.406	108856.090	34564.534	restoration	keep	Add timestep-dependent linear decay guidance scheduling	s=0.1,N=1,decay=linear_0.3-1.0	smooth_semantics:640257.401,edge_preservation:8714.534
+35cbda8	2.995	326131.636	108891.863	27177.636	restoration	keep	Add gradient momentum (0.9) across timesteps for smoother guidance	s=0.1,N=1,momentum=0.9	smooth_semantics:502231.068,edge_preservation:8747.666
+9fabc13	1.484	161604.217	108917.506	13467.018	restoration	keep	Replace MSE with Huber loss (smooth L1, beta=1.0) for smooth semantics	s=0.1,N=1,loss=huber_b1	smooth_semantics:244158.619,edge_preservation:8750.945
+2dc9ed9	49.191	5413.498	110.051	451.125	restoration	keep	FIX: Full 1000-step DDPM with scale=0.1 (corrected baseline)	s=0.1,N=1,steps=1000	smooth_semantics:5765.099,edge_preservation:471.942
+81d28e4	43.679	4697.077	107.535	391.423	restoration	keep	Exp2: Remove gradient momentum (GRAD_MOMENTUM=0)	s=0.1,N=1,momentum=0	smooth_semantics:5015.466,edge_preservation:453.194
+9591c20	43.680	4697.077	107.534	391.423	restoration	keep	Exp4: Remove gradient momentum (GRAD_MOMENTUM=0) at full 1000 steps	s=0.1,N=1,momentum=0	smooth_semantics:5015.466,edge_preservation:453.194
+822e739	36.988	4354.327	117.722	362.861	restoration	keep	Exp5: Remove edge (EDGE_WEIGHT=0) + no momentum: Huber+schedule only	s=0.1,N=1,momentum=0,edge=0	smooth_semantics:5041.728

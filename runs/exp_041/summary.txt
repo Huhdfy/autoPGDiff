@@ -1,0 +1,62 @@
+PGDiff Experiment Summary
+============================================================
+commit:             1cc166a
+started:            2026-05-25 20:05:05
+============================================================
+quality_score_v2:   3.582365   <-- PRIMARY (higher = better, IMAGE-BASED)
+quality_score_old:  54.665   (deprecated: avg_loss/sharpness)
+avg_guidance_loss:  2092.186
+num_images:         1
+loss_per_image:     2092.186
+============================================================
+task:               restoration
+guidance_scale:     0.1
+N:                  1
+s_start:            1.0
+s_end:              0.0
+timestep_respacing: ddpm1000
+use_ddim:           False
+seed:               1234
+============================================================
+total_seconds:      65.3
+per_image_avg_s:    61.8 (max: 61.8, min: 61.8)
+peak_vram_mb:       1018.6
+============================================================
+weights:
+  lightness:        1.0
+  color:            0.05
+  unmasked:         1.0
+  ss:               1.0
+  ref:              25.0
+  op_lightness:     1.0
+  op_color:         0.5
+============================================================
+guidance loss breakdown (per-term averages):
+  edge_preservation        : avg=562.560  total=56256.0  count=100
+  smooth_semantics         : avg=23623.546  total=2362354.6  count=100
+
+============================================================
+image quality metrics (aggregated):
+  edge_density_avg         : 0.2515
+  edge_density_max         : 0.2515
+  edge_density_min         : 0.2515
+  local_var_mean_avg       : 172.2669
+  local_var_mean_max       : 172.2669
+  local_var_mean_min       : 172.2669
+  naturalness_avg          : 0.8663
+  naturalness_max          : 0.8663
+  naturalness_min          : 0.8663
+  sharpness_avg            : 38.2729
+  sharpness_gain_avg       : 5.6930
+  sharpness_gain_max       : 5.6930
+  sharpness_gain_min       : 5.6930
+  sharpness_max            : 38.2729
+  sharpness_min            : 38.2729
+  ssim_input_avg           : 0.8271
+  ssim_input_max           : 0.8271
+  ssim_input_min           : 0.8271
+
+============================================================
+image quality metrics (per-image):
+  img_00: edge_density=0.2515, local_var_mean=172.2669, naturalness=0.8663, sharpness=38.2729, sharpness_gain=5.6930, ssim_input=0.8271
+

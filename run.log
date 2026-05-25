@@ -1,0 +1,12 @@
+Loading diffusion model...
+Loading restorer...
+==========================================================
+  Task:              restoration
+  Guidance scale:    0.1
+  N:                 1  (range [1.0T, 0.7T])
+  Steps:             full 1000
+  DDIM:              False
+  Seed:              1234
+  Input:             testdata/cropped_faces
+==========================================================
+[1/4] 0040.png
