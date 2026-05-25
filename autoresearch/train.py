@@ -77,7 +77,7 @@ OP_COLOR_WEIGHT = 0.5
 RESIDUAL_BLEND = 0.5        # output = (sample + input * blend) / (1 + blend) — weighted average
 
 # --- multi-step guidance ---
-N = 1                # gradient steps per timestep (>1 = stronger guidance)
+N = 2                # gradient steps per timestep (>1 = stronger guidance)
 S_START = 1.0        # start fraction of T (e.g. 1.0 = from t=T)
 S_END = 0.7          # end fraction of T (e.g. 0.7 = until 0.7T)
 
@@ -96,7 +96,7 @@ MAX_IMAGES = 1
 # Speed optimization flags
 BLOCK_UNET_GRAD = True   # True: restorer outside enable_grad
 USE_DPMSOLVER = True     # True: use DPM-Solver-2 (higher-order ODE, fewer steps)
-DPM_SOLVER_STEPS = 15     # number of DPM-Solver steps (if USE_DPMSOLVER=True)
+DPM_SOLVER_STEPS = 25     # number of DPM-Solver steps (if USE_DPMSOLVER=True)
 OUT_DIR = "../results/experiment"
 REF_DIR = None
 MASK_DIR = None
