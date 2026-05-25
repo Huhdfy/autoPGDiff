@@ -95,12 +95,12 @@ IN_DIR = "../testdata/cropped_faces"
 MAX_IMAGES = 1
 # Speed optimization flags
 BLOCK_UNET_GRAD = True   # True: restorer outside enable_grad
-USE_DPMSOLVER = False     # True: use DPM-Solver-2 (higher-order ODE, fewer steps)
-DPM_SOLVER_STEPS = 15     # number of DPM-Solver steps (if USE_DPMSOLVER=True)
+USE_DPMSOLVER = True     # True: use DPM-Solver-2 (higher-order ODE, fewer steps)
+DPM_SOLVER_STEPS = 100     # number of DPM-Solver steps (if USE_DPMSOLVER=True)
 RESTORER_T_ZERO = False   # True: call restorer with t=0 (test t-conditioning)
 DPM_FIRST_ORDER = False   # True: skip 2nd-order correction in DPM-Solver
 CONSTANT_SCHEDULE = False # True: disable linear schedule, use schedule=1.0
-HYBRID_MODE = True       # True: DPM coarse + DDPM refine
+HYBRID_MODE = False       # True: DPM coarse + DDPM refine
 HYBRID_SWITCH_T = 400     # timestep to switch from DPM to DDPM
 REFINE_STEPS = 50         # DDPM steps in refinement phase (if HYBRID_MODE)
 OUT_DIR = "../results/experiment"
