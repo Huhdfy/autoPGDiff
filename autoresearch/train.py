@@ -77,12 +77,12 @@ OP_COLOR_WEIGHT = 0.5
 RESIDUAL_BLEND = 0.5        # output = (sample + input * blend) / (1 + blend) — weighted average
 
 # --- multi-step guidance ---
-N = 1                # gradient steps per timestep (>1 = stronger guidance)
+N = 2                # gradient steps per timestep (>1 = stronger guidance)
 S_START = 1.0        # start fraction of T (e.g. 1.0 = from t=T)
 S_END = 0.7          # end fraction of T (e.g. 0.7 = until 0.7T)
 
 # --- sampling ---
-TIMESTEP_RESPACING = "ddpm25"   # full 1000 steps
+TIMESTEP_RESPACING = "ddpm20"   # full 1000 steps
 USE_DDIM = True
 CLIP_DENOISED = True
 BATCH_SIZE = 1
