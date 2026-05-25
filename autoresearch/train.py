@@ -103,7 +103,7 @@ CONSTANT_SCHEDULE = False # True: disable linear schedule, use schedule=1.0
 HYBRID_MODE = False       # True: DPM coarse + DDPM refine
 HYBRID_SWITCH_T = 400     # timestep to switch from DPM to DDPM
 REFINE_STEPS = 50         # DDPM steps in refinement phase (if HYBRID_MODE)
-GUIDANCE_EVERY_K = 2      # run guidance every K steps (1=every step, 5=sparse)
+GUIDANCE_EVERY_K = 3      # run guidance every K steps (1=every step, 5=sparse)
 SKIP_ZERO_SCALE = True    # True: skip guidance when scale=0 (saves restorer+grad)
 USE_FP16 = False          # True: run UNet in float16
 OUT_DIR = "../results/experiment"
