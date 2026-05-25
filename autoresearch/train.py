@@ -101,8 +101,8 @@ RESTORER_T_ZERO = False   # True: call restorer with t=0 (test t-conditioning)
 DPM_FIRST_ORDER = False   # True: skip 2nd-order correction in DPM-Solver
 CONSTANT_SCHEDULE = False # True: disable linear schedule, use schedule=1.0
 HYBRID_MODE = True       # True: DPM coarse + DDPM refine
-HYBRID_SWITCH_T = 200     # timestep to switch from DPM to DDPM
-REFINE_STEPS = 200         # DDPM steps in refinement phase (if HYBRID_MODE)
+HYBRID_SWITCH_T = 400     # timestep to switch from DPM to DDPM
+REFINE_STEPS = 50         # DDPM steps in refinement phase (if HYBRID_MODE)
 OUT_DIR = "../results/experiment"
 REF_DIR = None
 MASK_DIR = None
