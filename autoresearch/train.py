@@ -95,8 +95,8 @@ IN_DIR = "../testdata/cropped_faces"
 MAX_IMAGES = 1
 # Speed optimization flags
 BLOCK_UNET_GRAD = True   # True: restorer outside enable_grad
-USE_DPMSOLVER = False     # True: use DPM-Solver-2 (higher-order ODE, fewer steps)
-DPM_SOLVER_STEPS = 50     # number of DPM-Solver steps (if USE_DPMSOLVER=True)
+USE_DPMSOLVER = True     # True: use DPM-Solver-2 (higher-order ODE, fewer steps)
+DPM_SOLVER_STEPS = 25     # number of DPM-Solver steps (if USE_DPMSOLVER=True)
 OUT_DIR = "../results/experiment"
 REF_DIR = None
 MASK_DIR = None
