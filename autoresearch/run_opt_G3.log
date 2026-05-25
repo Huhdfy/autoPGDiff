@@ -1,0 +1,46 @@
+Loading diffusion model...
+Loading restorer...
+==========================================================
+  Task:              restoration
+  Guidance scale:    0.1
+  N:                 1  (range [1.0T, 0.3T])
+  Steps:             full 1000
+  DDIM:              False
+  Seed:              1234
+  Input:             ../testdata/cropped_faces
+==========================================================
+[1/1] 0040.png
+
+---
+[rank0]: Traceback (most recent call last):
+[rank0]:   File "/mnt/workspace/autoPGDiff/autoresearch/train.py", line 1027, in <module>
+[rank0]:     main()
+[rank0]:   File "/mnt/workspace/autoPGDiff/autoresearch/train.py", line 988, in main
+[rank0]:     peak_vram_mb, per_image_seconds, per_image_metrics, speed_stats = run_experiment(
+[rank0]:                                                                       ^^^^^^^^^^^^^^^
+[rank0]:   File "/mnt/workspace/autoPGDiff/autoresearch/train.py", line 671, in run_experiment
+[rank0]:     sample = diffusion.p_sample_loop(
+[rank0]:              ^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/mnt/workspace/autoPGDiff/guided_diffusion/gaussian_diffusion.py", line 541, in p_sample_loop
+[rank0]:     for sample in self.p_sample_loop_progressive(
+[rank0]:                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/mnt/workspace/autoPGDiff/guided_diffusion/gaussian_diffusion.py", line 599, in p_sample_loop_progressive
+[rank0]:     out = self.p_sample(
+[rank0]:           ^^^^^^^^^^^^^^
+[rank0]:   File "/mnt/workspace/autoPGDiff/guided_diffusion/gaussian_diffusion.py", line 443, in p_sample
+[rank0]:     out["mean"] = self.condition_mean(
+[rank0]:                   ^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/mnt/workspace/autoPGDiff/guided_diffusion/respace.py", line 99, in condition_mean
+[rank0]:     return super().condition_mean(self._wrap_model(cond_fn), *args, **kwargs)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/mnt/workspace/autoPGDiff/guided_diffusion/gaussian_diffusion.py", line 366, in condition_mean
+[rank0]:     gradient, target = cond_fn(x, self._scale_timesteps(t), **model_kwargs)
+[rank0]:                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/mnt/workspace/autoPGDiff/guided_diffusion/respace.py", line 128, in __call__
+[rank0]:     return self.model(x, new_ts, **kwargs)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/mnt/workspace/autoPGDiff/autoresearch/train.py", line 190, in __call__
+[rank0]:     if GUIDANCE_EARLY_STOP:
+[rank0]:        ^^^^^^^^^^^^^^^^^^^
+[rank0]: NameError: name 'GUIDANCE_EARLY_STOP' is not defined
+[rank0]:[W525 19:58:42.033656509 ProcessGroupNCCL.cpp:1553] Warning: WARNING: destroy_process_group() was not called before program exit, which can leak resources. For more info, please see https://pytorch.org/docs/stable/distributed.html#shutdown (function operator())

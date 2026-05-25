@@ -1,0 +1,36 @@
+Loading diffusion model...
+Loading restorer...
+==========================================================
+  Task:              restoration
+  Guidance scale:    0.1
+  N:                 1  (range [1.0T, 0.7T])
+  Steps:             full 1000
+  DDIM:              False
+  Seed:              1234
+  Input:             ../testdata/cropped_faces
+==========================================================
+[1/1] 0040.png
+
+---
+quality_score:       113.986   <-- PRIMARY (lower = better)
+avg_guidance_loss:   3386.395
+num_images:          1
+loss_per_image:      3386.395
+total_seconds:       136.5
+peak_vram_mb:        1019.0
+task:                restoration
+guidance_scale:      0.100
+N:                   1
+timestep_respacing:  ddpm1000
+use_ddim:            False
+seed:                1234
+guidance_calls:      1000
+restorer_calls:      1000
+s_per_image:         136.55
+ms_per_guidance:      136.55
+sharpness_avg:             29.709
+sharpness_max:             29.709
+sharpness_min:             29.709
+loss_edge_preservation:          0.000
+loss_smooth_semantics:          3761.055
+[rank0]:[W518 11:05:15.840982945 ProcessGroupNCCL.cpp:1524] Warning: WARNING: destroy_process_group() was not called before program exit, which can leak resources. For more info, please see https://pytorch.org/docs/stable/distributed.html#shutdown (function operator())

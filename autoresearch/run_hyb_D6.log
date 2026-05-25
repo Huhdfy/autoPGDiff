@@ -1,0 +1,53 @@
+Loading diffusion model...
+Loading restorer...
+==========================================================
+  Task:              restoration
+  Guidance scale:    0.1
+  N:                 1  (range [1.0T, 0.7T])
+  Steps:             full 1000
+  DDIM:              False
+  Seed:              1234
+  Input:             ../testdata/cropped_faces
+==========================================================
+[1/1] 0040.png
+
+---
+quality_score_v2:    0.1761   <-- PRIMARY (higher = better)
+quality_score_old:    4.425   (deprecated, lower = better)
+avg_guidance_loss:    119574.585
+num_images:           1
+total_seconds:        11.3
+peak_vram_mb:         1065.7
+task:                 restoration
+guidance_scale:       0.100
+N:                    1
+timestep_respacing:   ddpm1000
+use_ddim:             False
+seed:                 1234
+guidance_calls:       58
+restorer_calls:       58
+s_per_image:          11.35
+ms_per_guidance:      195.65
+edge_density_avg:              0.9565
+edge_density_max:              0.9565
+edge_density_min:              0.9565
+local_var_mean_avg:              932.4815
+local_var_mean_max:              932.4815
+local_var_mean_min:              932.4815
+naturalness_avg:              0.7075
+naturalness_max:              0.7075
+naturalness_min:              0.7075
+sharpness_avg:              27023.0106
+sharpness_gain_avg:              4019.6267
+sharpness_gain_max:              4019.6267
+sharpness_gain_min:              4019.6267
+sharpness_max:              27023.0106
+sharpness_min:              27023.0106
+ssim_input_avg:              0.0498
+ssim_input_max:              0.0498
+ssim_input_min:              0.0498
+loss_edge_preservation:           6247.390
+loss_smooth_semantics:           309329.673
+
+---
+[rank0]:[W525 19:22:23.922881377 ProcessGroupNCCL.cpp:1553] Warning: WARNING: destroy_process_group() was not called before program exit, which can leak resources. For more info, please see https://pytorch.org/docs/stable/distributed.html#shutdown (function operator())

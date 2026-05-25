@@ -24,7 +24,6 @@ results.tsv
 
 # Experiment logs
 run.log
-*.log
 
 # Per-experiment detailed logs
 runs/

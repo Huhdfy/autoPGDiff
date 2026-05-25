@@ -1,0 +1,53 @@
+Loading diffusion model...
+Loading restorer...
+==========================================================
+  Task:              restoration
+  Guidance scale:    0.1
+  N:                 1  (range [1.0T, 0.7T])
+  Steps:             full 1000
+  DDIM:              False
+  Seed:              1234
+  Input:             ../testdata/cropped_faces
+==========================================================
+[1/1] 0040.png
+
+---
+quality_score_v2:    0.8009   <-- PRIMARY (higher = better)
+quality_score_old:    9.438   (deprecated, lower = better)
+avg_guidance_loss:    145417.001
+num_images:           1
+total_seconds:        12.1
+peak_vram_mb:         1053.6
+task:                 restoration
+guidance_scale:       0.100
+N:                    1
+timestep_respacing:   ddpm1000
+use_ddim:             False
+seed:                 1234
+guidance_calls:       67
+restorer_calls:       67
+s_per_image:          12.06
+ms_per_guidance:      180.06
+edge_density_avg:              0.6957
+edge_density_max:              0.6957
+edge_density_min:              0.6957
+local_var_mean_avg:              1770.8790
+local_var_mean_max:              1770.8790
+local_var_mean_min:              1770.8790
+naturalness_avg:              0.7729
+naturalness_max:              0.7729
+naturalness_min:              0.7729
+sharpness_avg:              15407.7626
+sharpness_gain_avg:              2291.8784
+sharpness_gain_max:              2291.8784
+sharpness_gain_min:              2291.8784
+sharpness_max:              15407.7626
+sharpness_min:              15407.7626
+ssim_input_avg:              0.2073
+ssim_input_max:              0.2073
+ssim_input_min:              0.2073
+loss_edge_preservation:           0.000
+loss_smooth_semantics:           250645.148
+
+--- STDERR ---
+[rank0]:[W525 18:39:34.838665759 ProcessGroupNCCL.cpp:1553] Warning: WARNING: destroy_process_group() was not called before program exit, which can leak resources. For more info, please see https://pytorch.org/docs/stable/distributed.html#shutdown (function operator())

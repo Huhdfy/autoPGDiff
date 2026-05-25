@@ -1,0 +1,53 @@
+Loading diffusion model...
+Loading restorer...
+==========================================================
+  Task:              restoration
+  Guidance scale:    0.0
+  N:                 1  (range [1.0T, 0.7T])
+  Steps:             full 1000
+  DDIM:              False
+  Seed:              1234
+  Input:             ../testdata/cropped_faces
+==========================================================
+[1/1] 0040.png
+
+---
+quality_score_v2:    0.0580   <-- PRIMARY (higher = better)
+quality_score_old:    3.785   (deprecated, lower = better)
+avg_guidance_loss:    198458.431
+num_images:           1
+total_seconds:        9.9
+peak_vram_mb:         1053.6
+task:                 restoration
+guidance_scale:       0.000
+N:                    1
+timestep_respacing:   ddpm1000
+use_ddim:             False
+seed:                 1234
+guidance_calls:       47
+restorer_calls:       47
+s_per_image:          9.94
+ms_per_guidance:      211.41
+edge_density_avg:              0.9765
+edge_density_max:              0.9765
+edge_density_min:              0.9765
+local_var_mean_avg:              4345.4985
+local_var_mean_max:              4345.4985
+local_var_mean_min:              4345.4985
+naturalness_avg:              0.7040
+naturalness_max:              0.7040
+naturalness_min:              0.7040
+sharpness_avg:              52431.1920
+sharpness_gain_avg:              7799.0504
+sharpness_gain_max:              7799.0504
+sharpness_gain_min:              7799.0504
+sharpness_max:              52431.1920
+sharpness_min:              52431.1920
+ssim_input_avg:              0.0165
+ssim_input_max:              0.0165
+ssim_input_min:              0.0165
+loss_edge_preservation:           7396.639
+loss_smooth_semantics:           331542.995
+
+---
+[rank0]:[W525 19:15:20.809622492 ProcessGroupNCCL.cpp:1553] Warning: WARNING: destroy_process_group() was not called before program exit, which can leak resources. For more info, please see https://pytorch.org/docs/stable/distributed.html#shutdown (function operator())

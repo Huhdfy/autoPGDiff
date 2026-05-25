@@ -1,0 +1,53 @@
+Loading diffusion model...
+Loading restorer...
+==========================================================
+  Task:              restoration
+  Guidance scale:    0.1
+  N:                 3  (range [1.0T, 0.7T])
+  Steps:             full 1000
+  DDIM:              False
+  Seed:              1234
+  Input:             ../testdata/cropped_faces
+==========================================================
+[1/1] 0040.png
+
+---
+quality_score_v2:    0.2737   <-- PRIMARY (higher = better)
+quality_score_old:    5.537   (deprecated, lower = better)
+avg_guidance_loss:    186606.811
+num_images:           1
+total_seconds:        7.1
+peak_vram_mb:         1053.6
+task:                 restoration
+guidance_scale:       0.100
+N:                    3
+timestep_respacing:   ddpm1000
+use_ddim:             False
+seed:                 1234
+guidance_calls:       27
+restorer_calls:       27
+s_per_image:          7.14
+ms_per_guidance:      264.51
+edge_density_avg:              0.9041
+edge_density_max:              0.9041
+edge_density_min:              0.9041
+local_var_mean_avg:              2301.0209
+local_var_mean_max:              2301.0209
+local_var_mean_min:              2301.0209
+naturalness_avg:              0.7177
+naturalness_max:              0.7177
+naturalness_min:              0.7177
+sharpness_avg:              33702.3726
+sharpness_gain_avg:              5013.1705
+sharpness_gain_max:              5013.1705
+sharpness_gain_min:              5013.1705
+sharpness_max:              33702.3726
+sharpness_min:              33702.3726
+ssim_input_avg:              0.0763
+ssim_input_max:              0.0763
+ssim_input_min:              0.0763
+loss_edge_preservation:           0.000
+loss_smooth_semantics:           314565.629
+
+--- STDERR ---
+[rank0]:[W525 18:40:06.816102106 ProcessGroupNCCL.cpp:1553] Warning: WARNING: destroy_process_group() was not called before program exit, which can leak resources. For more info, please see https://pytorch.org/docs/stable/distributed.html#shutdown (function operator())

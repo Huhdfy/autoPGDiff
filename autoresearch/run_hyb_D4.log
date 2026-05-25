@@ -1,0 +1,53 @@
+Loading diffusion model...
+Loading restorer...
+==========================================================
+  Task:              restoration
+  Guidance scale:    0.1
+  N:                 1  (range [1.0T, 0.7T])
+  Steps:             full 1000
+  DDIM:              False
+  Seed:              1234
+  Input:             ../testdata/cropped_faces
+==========================================================
+[1/1] 0040.png
+
+---
+quality_score_v2:    0.1690   <-- PRIMARY (higher = better)
+quality_score_old:    4.821   (deprecated, lower = better)
+avg_guidance_loss:    135822.955
+num_images:           1
+total_seconds:        19.1
+peak_vram_mb:         1065.0
+task:                 restoration
+guidance_scale:       0.100
+N:                    1
+timestep_respacing:   ddpm1000
+use_ddim:             False
+seed:                 1234
+guidance_calls:       118
+restorer_calls:       118
+s_per_image:          19.11
+ms_per_guidance:      161.99
+edge_density_avg:              0.9508
+edge_density_max:              0.9508
+edge_density_min:              0.9508
+local_var_mean_avg:              969.9683
+local_var_mean_max:              969.9683
+local_var_mean_min:              969.9683
+naturalness_avg:              0.7085
+naturalness_max:              0.7085
+naturalness_min:              0.7085
+sharpness_avg:              28175.1801
+sharpness_gain_avg:              4191.0100
+sharpness_gain_max:              4191.0100
+sharpness_gain_min:              4191.0100
+sharpness_max:              28175.1801
+sharpness_min:              28175.1801
+ssim_input_avg:              0.0477
+ssim_input_max:              0.0477
+ssim_input_min:              0.0477
+loss_edge_preservation:           6730.839
+loss_smooth_semantics:           365327.353
+
+---
+[rank0]:[W525 19:21:51.910147132 ProcessGroupNCCL.cpp:1553] Warning: WARNING: destroy_process_group() was not called before program exit, which can leak resources. For more info, please see https://pytorch.org/docs/stable/distributed.html#shutdown (function operator())

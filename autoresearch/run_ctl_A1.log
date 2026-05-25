@@ -1,0 +1,53 @@
+Loading diffusion model...
+Loading restorer...
+==========================================================
+  Task:              restoration
+  Guidance scale:    1.0
+  N:                 1  (range [1.0T, 0.7T])
+  Steps:             full 1000
+  DDIM:              True
+  Seed:              1234
+  Input:             ../testdata/cropped_faces
+==========================================================
+[1/1] 0040.png
+
+---
+quality_score_v2:    0.2419   <-- PRIMARY (higher = better)
+quality_score_old:    17.026   (deprecated, lower = better)
+avg_guidance_loss:    135683.345
+num_images:           1
+total_seconds:        12.5
+peak_vram_mb:         1053.6
+task:                 restoration
+guidance_scale:       1.000
+N:                    1
+timestep_respacing:   ddpm1000
+use_ddim:             True
+seed:                 1234
+guidance_calls:       67
+restorer_calls:       67
+s_per_image:          12.47
+ms_per_guidance:      186.06
+edge_density_avg:              0.2649
+edge_density_max:              0.2649
+edge_density_min:              0.2649
+local_var_mean_avg:              2250.9788
+local_var_mean_max:              2250.9788
+local_var_mean_min:              2250.9788
+naturalness_avg:              0.7850
+naturalness_max:              0.7850
+naturalness_min:              0.7850
+sharpness_avg:              7969.0442
+sharpness_gain_avg:              1185.3817
+sharpness_gain_max:              1185.3817
+sharpness_gain_min:              1185.3817
+sharpness_max:              7969.0442
+sharpness_min:              7969.0442
+ssim_input_avg:              0.0616
+ssim_input_max:              0.0616
+ssim_input_min:              0.0616
+loss_edge_preservation:           3220.937
+loss_smooth_semantics:           227499.214
+
+---
+[rank0]:[W525 19:06:06.631875775 ProcessGroupNCCL.cpp:1553] Warning: WARNING: destroy_process_group() was not called before program exit, which can leak resources. For more info, please see https://pytorch.org/docs/stable/distributed.html#shutdown (function operator())
