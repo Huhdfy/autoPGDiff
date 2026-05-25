@@ -61,7 +61,7 @@ from prepare import (
 # ═══════════════════════════════════════════════════════════════════════════
 
 TASK = "restoration"
-GUIDANCE_SCALE = 0.1
+GUIDANCE_SCALE = 1.0
 SEED = 1234
 
 # --- task weights ---
@@ -96,7 +96,10 @@ MAX_IMAGES = 1
 # Speed optimization flags
 BLOCK_UNET_GRAD = True   # True: restorer outside enable_grad
 USE_DPMSOLVER = True     # True: use DPM-Solver-2 (higher-order ODE, fewer steps)
-DPM_SOLVER_STEPS = 45     # number of DPM-Solver steps (if USE_DPMSOLVER=True)
+DPM_SOLVER_STEPS = 35     # number of DPM-Solver steps (if USE_DPMSOLVER=True)
+RESTORER_T_ZERO = False   # True: call restorer with t=0 (test t-conditioning)
+DPM_FIRST_ORDER = False   # True: skip 2nd-order correction in DPM-Solver
+CONSTANT_SCHEDULE = False # True: disable linear schedule, use schedule=1.0
 OUT_DIR = "../results/experiment"
 REF_DIR = None
 MASK_DIR = None
@@ -180,7 +183,8 @@ class PartialGuidance:
                 # Outside enable_grad: no computation graph built → saves VRAM
                 self.restorer_calls += 1
                 with th.no_grad():
-                    fake_g_output = self.restorer(x, y_t=y, t=t).clamp(-1, 1).cuda()
+                    t_restorer = th.zeros_like(t) if RESTORER_T_ZERO else t
+                    fake_g_output = self.restorer(x, y_t=y, t=t_restorer).clamp(-1, 1).cuda()
 
         with th.enable_grad():
             pred_xstart_in = pred_xstart.detach().requires_grad_(True) if pred_xstart is not None else x.detach().requires_grad_(True)
@@ -271,7 +275,7 @@ class PartialGuidance:
 
             # Linear decay schedule: amplifies variance trend (strong early, weak late)
             t_frac = t[0].item() / DIFFUSION_STEPS
-            schedule = 0.3 + 0.7 * t_frac
+            schedule = 1.0 if CONSTANT_SCHEDULE else 0.3 + 0.7 * t_frac
             total_loss = total_loss * schedule
 
             gradient = th.autograd.grad(total_loss, pred_xstart_in)[0]
@@ -391,7 +395,7 @@ def dpm_solver_sample_loop(model_fn, shape, alphas_cumprod, model, cond_fn,
             eps_pred = eps_pred - s_cur * grad * gs
 
         # ── 3) First-order step to midpoint ──
-        if i < len(step_t) - 2:
+        if i < len(step_t) - 2 and not DPM_FIRST_ORDER:
             t_mid = int((t_cur * t_next) ** 0.5) if t_cur > 0 else 0
             if t_mid == t_cur or t_mid == t_next:
                 t_mid = (t_cur + t_next) // 2
