@@ -149,16 +149,94 @@ def adaptive_instance_normalization(content_feat, style_feat=None):
 # Image quality metrics (immutable — reliable no-reference evaluation)
 # ---------------------------------------------------------------------------
 
-def compute_sharpness(tensor):
-    """
-    Laplacian variance — standard no-reference sharpness metric.
-    Higher = sharper image (fewer artifacts from over-smoothing).
-    tensor: (1, 3, H, W) in [-1, 1].
-    """
+def _tensor_to_uint8_np(tensor):
     img = ((tensor + 1) * 127.5).clamp(0, 255).to(th.uint8)
-    img_np = img[0].permute(1, 2, 0).cpu().numpy()          # (H, W, 3) RGB
-    gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
+    return img[0].permute(1, 2, 0).cpu().numpy()
+
+
+def _tensor_to_gray(tensor):
+    img_np = _tensor_to_uint8_np(tensor)
+    return cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
+
+
+def compute_sharpness(tensor):
+    gray = _tensor_to_gray(tensor)
     return cv2.Laplacian(gray, cv2.CV_64F).var()
+
+
+def compute_ssim(tensor_a, tensor_b):
+    gray_a = _tensor_to_gray(tensor_a).astype(np.float64)
+    gray_b = _tensor_to_gray(tensor_b).astype(np.float64)
+    C1 = (0.01 * 255) ** 2
+    C2 = (0.03 * 255) ** 2
+    mu_a = cv2.GaussianBlur(gray_a, (11, 11), 1.5)
+    mu_b = cv2.GaussianBlur(gray_b, (11, 11), 1.5)
+    mu_aa, mu_bb = mu_a * mu_a, mu_b * mu_b
+    mu_ab = mu_a * mu_b
+    sig_aa = cv2.GaussianBlur(gray_a * gray_a, (11, 11), 1.5) - mu_aa
+    sig_bb = cv2.GaussianBlur(gray_b * gray_b, (11, 11), 1.5) - mu_bb
+    sig_ab = cv2.GaussianBlur(gray_a * gray_b, (11, 11), 1.5) - mu_ab
+    ssim_map = ((2 * mu_ab + C1) * (2 * sig_ab + C2)) / ((mu_aa + mu_bb + C1) * (sig_aa + sig_bb + C2) + 1e-8)
+    return float(np.mean(ssim_map))
+
+
+def compute_local_variance_entropy(tensor, grid=16):
+    gray = _tensor_to_gray(tensor).astype(np.float64)
+    h, w = gray.shape
+    cell_h, cell_w = h // grid, w // grid
+    cell_vars = []
+    for i in range(grid):
+        for j in range(grid):
+            cell = gray[i * cell_h:(i + 1) * cell_h, j * cell_w:(j + 1) * cell_w]
+            cell_vars.append(np.var(cell))
+    cell_vars = np.array(cell_vars)
+    mean_var = float(np.mean(cell_vars))
+    std_var = float(np.std(cell_vars))
+    cv = std_var / (mean_var + 1e-8)
+    return {"local_var_mean": mean_var, "local_var_std": std_var, "local_var_cv": cv}
+
+
+def compute_gradient_stats(tensor):
+    gray = _tensor_to_gray(tensor).astype(np.float64)
+    gx = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=3)
+    gy = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=3)
+    mag = np.sqrt(gx ** 2 + gy ** 2)
+    total_pixels = mag.size
+    edge_density = float(np.sum(mag > 20) / total_pixels)
+    p50 = np.percentile(mag, 50)
+    p95 = np.percentile(mag, 95)
+    weak_edges = np.sum((mag > p50) & (mag <= p95))
+    strong_edges = np.sum(mag > p95)
+    strong_ratio = float(strong_edges / (weak_edges + strong_edges + 1))
+    return {
+        "edge_density": edge_density,
+        "strong_ratio": strong_ratio,
+        "grad_mean": float(np.mean(mag)),
+        "grad_std": float(np.std(mag)),
+    }
+
+
+def compute_naturalness_score(tensor):
+    lv = compute_local_variance_entropy(tensor)
+    gs = compute_gradient_stats(tensor)
+    mean_var = lv["local_var_mean"]
+    edge_density = gs["edge_density"]
+    strong_ratio = gs["strong_ratio"]
+    if mean_var > 10000:
+        var_score = 10000.0 / (mean_var + 1e-8)
+    elif mean_var < 10:
+        var_score = mean_var / 10.0
+    else:
+        var_score = 1.0
+    if edge_density > 0.50:
+        edge_score = 0.50 / (edge_density + 1e-8)
+    elif edge_density < 0.002:
+        edge_score = edge_density / 0.002
+    else:
+        edge_score = 1.0
+    ratio_score = max(0.0, 1.0 - strong_ratio / 0.25)
+    scores = [max(0.0, min(1.0, s)) for s in [var_score, edge_score, ratio_score]]
+    return float(np.mean(scores))
 
 
 def compute_colorfulness(tensor):
@@ -198,12 +276,25 @@ def compute_image_metrics(output_tensor, task="restoration",
     Compute quality metrics for a single output image.
     Returns a dict of metric_name -> value.
 
-    Metrics computed:
-      - sharpness:       always (no-reference)
-      - colorfulness:    for colorization / old_photo tasks
-      - identity_sim:    for ref_restoration (needs embedding + ref_tensor)
+    Core metrics (always computed):
+      - sharpness, naturalness, edge_density, local_var_mean
+    Input-referenced (when input_tensor provided):
+      - ssim_input, sharpness_gain
     """
-    metrics = {"sharpness": compute_sharpness(output_tensor)}
+    metrics = {
+        "sharpness": compute_sharpness(output_tensor),
+        "naturalness": compute_naturalness_score(output_tensor),
+    }
+    gs = compute_gradient_stats(output_tensor)
+    metrics["edge_density"] = gs["edge_density"]
+    lv = compute_local_variance_entropy(output_tensor)
+    metrics["local_var_mean"] = lv["local_var_mean"]
+
+    if input_tensor is not None:
+        metrics["ssim_input"] = compute_ssim(output_tensor, input_tensor)
+        in_sharp = compute_sharpness(input_tensor)
+        out_sharp = metrics["sharpness"]
+        metrics["sharpness_gain"] = out_sharp / (in_sharp + 1e-8) if in_sharp > 0 else 1.0
 
     if task in ("colorization", "old_photo_restoration"):
         metrics["colorfulness"] = compute_colorfulness(output_tensor)

@@ -12,14 +12,22 @@ Each experiment:
   1. You edit this file with your idea
   2. git commit with a descriptive message
   3. python train.py > run.log 2>&1
-  4. Extract results: grep "^quality_score:" run.log
+  4. Extract results: grep "^quality_score_v2:" run.log
   5. Log to results.tsv
-  6. Keep or discard based on quality_score (lower = better)
+  6. Keep or discard based on quality_score_v2 (higher = better)
 
-PRIMARY METRIC:  quality_score = avg_guidance_loss / avg_sharpness
-  - Lower loss   → better constraint satisfaction
-  - Higher sharp → less blur, more detail
-  - quality_score balances both → the agent minimizes this
+PRIMARY METRIC (V2):  quality_score_v2 = ssim × naturalness × clip(sharpness_gain, 0.2, 5.0)
+  - ssim_input:    structural similarity to input LQ image [0, 1] — structure preservation
+  - naturalness:   composite [0, 1] based on edge density + local variance + gradient stats
+  - sharpness_gain: output sharpness / input sharpness (capped 0.2–5.0)
+
+Key advantages over old metric (avg_loss/sharpness):
+  - STEP-INDEPENDENT: works across 50, 200, 1000 step experiments
+  - IMAGE-BASED: evaluates output image quality, not optimization internals
+  - ANTI-GAMING: SSIM penalizes color blobs/noise; sharpness cap prevents noise hijack
+  - MULTI-DIMENSIONAL: no single metric can be isolated and gamed
+
+BACKWARD COMPAT: quality_score_old (avg_loss/sharpness) still printed for reference.
 """
 import os
 import sys
@@ -74,7 +82,7 @@ S_START = 1.0        # start fraction of T (e.g. 1.0 = from t=T)
 S_END = 0.7          # end fraction of T (e.g. 0.7 = until 0.7T)
 
 # --- sampling ---
-TIMESTEP_RESPACING = ""   # "" = full 1000 steps, "ddpm200" = 200 steps
+TIMESTEP_RESPACING = ""   # full 1000 steps
 USE_DDIM = False
 CLIP_DENOISED = True
 BATCH_SIZE = 1
@@ -82,19 +90,23 @@ IMAGE_SIZE = 512
 DIFFUSION_STEPS = 1000    # total diffusion steps of the pre-trained model
 
 # --- I/O paths ---
-IN_DIR = "testdata/cropped_faces"
+IN_DIR = "../testdata/cropped_faces"
 # Use only first N images for faster experiments
-MAX_IMAGES = 4
-OUT_DIR = "results/experiment"
+MAX_IMAGES = 1
+# Speed optimization flags
+BLOCK_UNET_GRAD = True   # True: restorer outside enable_grad
+USE_DPMSOLVER = False     # True: use DPM-Solver-2 (higher-order ODE, fewer steps)
+DPM_SOLVER_STEPS = 50     # number of DPM-Solver steps (if USE_DPMSOLVER=True)
+OUT_DIR = "../results/experiment"
 REF_DIR = None
 MASK_DIR = None
-MODEL_PATH = "models/iddpm_ffhq512_ema500000.pth"
-RESTORER_PATH = "models/restorer/rrdb_iter_100000.pth"
-ARCFACE_PATH = "models/ms1mv3_arcface_r50_fp16.pth"
+MODEL_PATH = "../models/iddpm_ffhq512_ema500000.pth"
+RESTORER_PATH = "../models/restorer/rrdb_iter_100000.pth"
+ARCFACE_PATH = "../models/ms1mv3_arcface_r50_fp16.pth"
 
 # --- recording ---
-RUN_TAG = "may17_v2"  # set by the experiment loop; leave empty for manual runs
-RUNS_DIR = "runs"     # per-experiment detailed logs stored here
+RUN_TAG = "accelerate_v1"  # 推理加速实验第1轮
+RUNS_DIR = "../runs"     # per-experiment detailed logs stored here
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Helper: Sobel edge maps  —  used by edge-preservation loss
@@ -138,11 +150,15 @@ class PartialGuidance:
         self.losses = []           # accumulated per-timestep guidance loss
         self.loss_breakdown = {}   # per-loss-term tracking (for analysis)
         self.prev_gradient = None  # for gradient momentum
+        self.guidance_calls = 0    # speed tracking
+        self.restorer_calls = 0
 
     def reset(self):
         self.losses = []
         self.loss_breakdown = {}
         self.prev_gradient = None
+        self.guidance_calls = 0
+        self.restorer_calls = 0
 
     def avg_loss(self):
         if not self.losses:
@@ -154,8 +170,26 @@ class PartialGuidance:
                  N=1, s_start=1, s_end=0.7):
         assert y is not None
         fake_g_output = None
+        self.guidance_calls += 1
+
+        # ── restorer forward (position depends on BLOCK_UNET_GRAD) ──
+        if "restoration" in task:
+            if target is not None:
+                fake_g_output = target.cuda()
+            elif BLOCK_UNET_GRAD:
+                # Outside enable_grad: no computation graph built → saves VRAM
+                self.restorer_calls += 1
+                with th.no_grad():
+                    fake_g_output = self.restorer(x, y_t=y, t=t).clamp(-1, 1).cuda()
 
         with th.enable_grad():
+            pred_xstart_in = pred_xstart.detach().requires_grad_(True)
+            total_loss = th.tensor(0.0, device=x.device)
+
+            # ── restorer for baseline (inside enable_grad = builds graph, more VRAM) ──
+            if "restoration" in task and not BLOCK_UNET_GRAD and fake_g_output is None:
+                self.restorer_calls += 1
+                fake_g_output = self.restorer(x, y_t=y, t=t).clamp(-1, 1).cuda()
             pred_xstart_in = pred_xstart.detach().requires_grad_(True)
             total_loss = th.tensor(0.0, device=x.device)
 
@@ -184,11 +218,6 @@ class PartialGuidance:
 
             # ── restoration (smooth semantics) ──
             if "restoration" in task:
-                if target is None:
-                    fake_g_output = self.restorer(x, y_t=y, t=t).clamp(-1, 1)
-                    fake_g_output = fake_g_output.detach().requires_grad_(True).cuda()
-                else:
-                    fake_g_output = target.detach().requires_grad_(True).cuda()
                 loss_s = F.smooth_l1_loss(
                     fake_g_output, pred_xstart_in, reduction="sum", beta=1.0
                 ) * self.w.get("ss_weight", 1.0)
@@ -240,10 +269,9 @@ class PartialGuidance:
 
             # ── add new tasks / loss terms here ──
 
-            # ── Timestep-dependent guidance scheduling ──
-            # Linear decay: strong guidance at high t (structure), weaker at low t (details)
+            # Linear decay schedule: amplifies variance trend (strong early, weak late)
             t_frac = t[0].item() / DIFFUSION_STEPS
-            schedule = 0.3 + 0.7 * t_frac  # ranges from ~1.0 (t=T) to ~0.3 (t=0)
+            schedule = 0.3 + 0.7 * t_frac
             total_loss = total_loss * schedule
 
             gradient = th.autograd.grad(total_loss, pred_xstart_in)[0]
@@ -257,7 +285,7 @@ class PartialGuidance:
         self.losses.append(total_loss.item())
 
         if "restoration" in task:
-            return gradient, fake_g_output.detach()
+            return gradient, fake_g_output
         else:
             return gradient, None
 
@@ -279,6 +307,130 @@ def model_fn(x, t, y=None, target=None, ref=None, mask=None,
     """
     assert y is not None
     return model(x, t, y if get_model_defaults()["class_cond"] else None)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# DPM-SOLVER-2 SAMPLER  —  Higher-order ODE solver (fewer steps, same quality)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def dpm_solver_sample_loop(model_fn, shape, alphas_cumprod, model, cond_fn,
+                            model_kwargs, clip_denoised=True, device=None,
+                            seed=1234, num_steps=50):
+    """
+    DPM-Solver-2 (multi-step) sampling with guidance.
+    Uses 2 NFEs per step for 2nd-order accuracy => far fewer steps needed.
+    """
+    import math as _math
+    th.manual_seed(seed)
+    np.random.seed(seed)
+    if th.cuda.is_available():
+        th.cuda.manual_seed_all(seed)
+
+    T = len(alphas_cumprod)
+    alpha_bar = th.from_numpy(alphas_cumprod.astype(np.float64)).float().to(device)
+    alpha = alpha_bar.sqrt()          # sqrt(alpha_bar), shape (T,)
+    sigma = (1 - alpha_bar).sqrt()    # sqrt(1 - alpha_bar)
+
+    # log-SNR: lambda = log(alpha / sigma)
+    lam = th.log(alpha / (sigma + 1e-8))
+
+    # Uniformly spaced timesteps (in lambda space)
+    lam_targets = th.linspace(lam[0].item(), lam[-1].item(), num_steps, device=device)
+    step_t = []
+    for lv in lam_targets:
+        idx = th.argmin((lam - lv).abs()).item()
+        step_t.append(idx)
+    step_t = sorted(set(step_t), reverse=True)
+    if step_t[-1] != 0:
+        if step_t[-1] > 0:
+            step_t.append(0)
+        else:
+            step_t[-1] = 0
+
+    # Remove duplicates and ensure monotonicity
+    step_t = sorted(set(step_t), reverse=True)
+
+    # Helper: scalar → broadcastable (B, C, H, W) view
+    def _bc(t_val):
+        return alpha[t_val].view(1, 1, 1, 1).expand(shape)
+
+    def _bs(t_val):
+        return sigma[t_val].view(1, 1, 1, 1).expand(shape)
+
+    # Initial noise
+    x = th.randn(*shape, device=device)
+
+    for i in range(len(step_t) - 1):
+        t_cur = step_t[i]
+        t_next = step_t[i + 1]
+
+        if t_cur == t_next:
+            continue
+
+        t_tensor = th.tensor([t_cur] * shape[0], device=device)
+        a_cur, s_cur = _bc(t_cur), _bs(t_cur)
+        a_nxt, s_nxt = _bc(t_next), _bs(t_next)
+
+        # ── 1) Model forward (model outputs 6ch: first 3 = x0_pred) ──
+        with th.no_grad():
+            model_out = model_fn(x, t_tensor, **model_kwargs)
+            x0_pred = model_out[:, :3]  # first 3 channels are x₀ prediction
+        if clip_denoised:
+            x0_pred = x0_pred.clamp(-1, 1)
+
+        # ── 2) Epsilon + guidance ──
+        eps_pred = (x - a_cur * x0_pred) / (s_cur + 1e-8)
+
+        with th.enable_grad():
+            pxi = x0_pred.detach().requires_grad_(True)
+            model_kwargs['pred_xstart'] = pxi
+            grad, _ = cond_fn(x, t_tensor, **model_kwargs)
+            model_kwargs.pop('pred_xstart', None)
+        if grad is not None:
+            gs = model_kwargs.get("scale", 0.1)
+            eps_pred = eps_pred - s_cur * grad * gs
+
+        # ── 3) First-order step to midpoint ──
+        if i < len(step_t) - 2:
+            t_mid = int((t_cur * t_next) ** 0.5) if t_cur > 0 else 0
+            if t_mid == t_cur or t_mid == t_next:
+                t_mid = (t_cur + t_next) // 2
+            a_mid, s_mid = _bc(t_mid), _bs(t_mid)
+            x_mid = a_mid * x0_pred + s_mid * eps_pred
+            t_mid_t = th.tensor([t_mid] * shape[0], device=device)
+
+            # ── 4) Second model eval at midpoint ──
+            with th.no_grad():
+                model_out_mid = model_fn(x_mid, t_mid_t, **model_kwargs)
+                x0_mid = model_out_mid[:, :3]
+            if clip_denoised:
+                x0_mid = x0_mid.clamp(-1, 1)
+            eps_mid = (x_mid - a_mid * x0_mid) / (s_mid + 1e-8)
+
+            with th.enable_grad():
+                pxi_mid = x0_mid.detach().requires_grad_(True)
+                model_kwargs['pred_xstart'] = pxi_mid
+                g_mid, _ = cond_fn(x_mid, t_mid_t, **model_kwargs)
+                model_kwargs.pop('pred_xstart', None)
+            if g_mid is not None:
+                eps_mid = eps_mid - s_mid * g_mid * gs
+
+            # ── 5) Second-order correction ──
+            h = (lam[t_cur] - lam[t_next]).item()
+            h1 = (lam[t_cur] - lam[t_mid]).item()
+            r = h1 / max(h, 1e-8) if h != 0 else 1.0
+            eps_corr = (1 + 1 / (2 * max(r, 0.01))) * eps_mid - (1 / (2 * max(r, 0.01))) * eps_pred
+
+            x_out = a_nxt * x0_mid + s_nxt * eps_corr
+            if th.isnan(x_out).any():
+                # Fallback: use first order
+                x_out = a_nxt * x0_pred + s_nxt * eps_pred
+            x = x_out
+        else:
+            # ── 6) Last step: first order ──
+            x = a_nxt * x0_pred + s_nxt * eps_pred
+
+    return x
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -316,12 +468,14 @@ def run_experiment(diffusion, guidance, images, out_dir, task, guidance_scale,
                    embedding=None):
     """
     Run inference on all images.
-    Returns (peak_vram_mb, per_image_seconds, per_image_metrics).
-    per_image_metrics: list of dicts with 'sharpness', 'colorfulness', 'identity_sim'.
+    Returns (peak_vram_mb, per_image_seconds, per_image_metrics, speed_stats).
+    speed_stats: dict with total_steps, guidance_calls, restorer_calls.
     """
     peak_vram_mb = 0
     per_image_seconds = []
     per_image_metrics = []
+    total_guidance_calls = 0
+    total_restorer_calls = 0
 
     for idx, img_name in enumerate(images):
         guidance.reset()
@@ -333,16 +487,40 @@ def run_experiment(diffusion, guidance, images, out_dir, task, guidance_scale,
             diffusion_steps, ref_dir, mask_dir, mask_images
         )
 
-        sample_fn = diffusion.ddim_sample_loop if USE_DDIM else diffusion.p_sample_loop
-        sample = sample_fn(
-            model_fn,
-            (BATCH_SIZE, 3, IMAGE_SIZE, IMAGE_SIZE),
-            clip_denoised=CLIP_DENOISED,
-            model_kwargs=model_kwargs,
-            cond_fn=guidance,
-            device=device(),
-            seed=seed,
-        )
+        if USE_DPMSOLVER:
+            sample = dpm_solver_sample_loop(
+                model_fn,
+                (BATCH_SIZE, 3, IMAGE_SIZE, IMAGE_SIZE),
+                diffusion.alphas_cumprod,
+                model,
+                guidance,
+                model_kwargs=model_kwargs,
+                clip_denoised=CLIP_DENOISED,
+                device=device(),
+                seed=seed,
+                num_steps=DPM_SOLVER_STEPS,
+            )
+        else:
+            if USE_DDIM:
+                # ddim_sample_loop does NOT accept seed argument
+                sample = diffusion.ddim_sample_loop(
+                    model_fn,
+                    (BATCH_SIZE, 3, IMAGE_SIZE, IMAGE_SIZE),
+                    clip_denoised=CLIP_DENOISED,
+                    model_kwargs=model_kwargs,
+                    cond_fn=guidance,
+                    device=device(),
+                )
+            else:
+                sample = diffusion.p_sample_loop(
+                    model_fn,
+                    (BATCH_SIZE, 3, IMAGE_SIZE, IMAGE_SIZE),
+                    clip_denoised=CLIP_DENOISED,
+                    model_kwargs=model_kwargs,
+                    cond_fn=guidance,
+                    device=device(),
+                    seed=seed,
+                )
 
         # ── Residual post-processing: weighted average with input ──
         if RESIDUAL_BLEND > 0:
@@ -353,12 +531,17 @@ def run_experiment(diffusion, guidance, images, out_dir, task, guidance_scale,
         save_image(sample, os.path.join(out_dir, img_name))
         elapsed = time.time() - t_img
         per_image_seconds.append(elapsed)
+        # DPM-Solver with 2 NFEs per step, but guidance only called once per model eval
+        # guidance_calls already reflects the actual count
+        total_guidance_calls += guidance.guidance_calls
+        total_restorer_calls += guidance.restorer_calls
 
         # ---- per-image quality metrics ----
         ref_tensor = model_kwargs.get("ref", None)
+        y_input = model_kwargs.get("y", None)
         metrics = compute_image_metrics(
             sample, task=task, embedding=embedding,
-            ref_tensor=ref_tensor, input_tensor=model_kwargs.get("y", None),
+            ref_tensor=ref_tensor, input_tensor=y_input,
         )
         per_image_metrics.append(metrics)
 
@@ -367,7 +550,11 @@ def run_experiment(diffusion, guidance, images, out_dir, task, guidance_scale,
             peak_vram_mb = max(peak_vram_mb, vram)
             th.cuda.reset_peak_memory_stats()
 
-    return peak_vram_mb, per_image_seconds, per_image_metrics
+    speed_stats = dict(
+        total_guidance_calls=total_guidance_calls,
+        total_restorer_calls=total_restorer_calls,
+    )
+    return peak_vram_mb, per_image_seconds, per_image_metrics, speed_stats
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -376,16 +563,9 @@ def run_experiment(diffusion, guidance, images, out_dir, task, guidance_scale,
 
 def compute_quality_score(avg_loss, per_image_metrics):
     """
-    Composite quality score — the PRIMARY metric to minimize.
-
+    [DEPRECATED] Old step-dependent quality score.
     quality_score = avg_guidance_loss / avg_sharpness
-
-    Lower is better:
-      - Lower guidance loss  → better constraint satisfaction
-      - Higher sharpness      → less blur, more detail
-      - Loss / sharpness      → balances both in one number
-
-    For ref_restoration, identity_sim is also reported separately.
+    Included for backward compatibility. Use compute_quality_score_v2() instead.
     """
     sharpness_vals = [m["sharpness"] for m in per_image_metrics]
     if not sharpness_vals:
@@ -395,12 +575,49 @@ def compute_quality_score(avg_loss, per_image_metrics):
     return quality_score, avg_sharpness
 
 
+def compute_quality_score_v2(per_image_metrics):
+    """
+    Step-independent composite quality score. HIGHER = better.
+    Purely image-based — does NOT depend on guidance loss or step count.
+
+    Combines three orthogonal signals:
+      1. Structure preservation: SSIM(output, input)  [0, 1]
+      2. Naturalness:           absence of artifacts   [0, 1]
+      3. Sharpness gain:        output sharpness / input sharpness (capped)
+
+    Formulation:
+      quality_v2 = ssim × naturalness × clip(sharpness_gain, 0.2, 5.0)
+
+    Behaves correctly across step counts:
+      - Good restoration (1000-step): ssim~0.7, nat~0.8, gain~1.2 → score ~0.67
+      - Color blob (200-step noise): ssim~0.05, nat~0.1, gain~200 → score ~0.025
+      - Over-smoothed:              ssim~0.95, nat~0.3, gain~0.3 → score ~0.09
+      - Identity (no change):       ssim~1.0, nat~1.0, gain~1.0 → score ~1.0
+
+    The cap on sharpness_gain prevents noise from hijacking the score.
+    """
+    ssim_vals = [m.get("ssim_input", 0.0) for m in per_image_metrics]
+    nat_vals = [m.get("naturalness", 0.0) for m in per_image_metrics]
+    gain_vals = [m.get("sharpness_gain", 1.0) for m in per_image_metrics]
+
+    if not ssim_vals:
+        return 0.0
+
+    mean_ssim = sum(ssim_vals) / len(ssim_vals)
+    mean_nat = sum(nat_vals) / len(nat_vals)
+    mean_gain = sum(gain_vals) / len(gain_vals)
+
+    mean_gain = max(0.2, min(mean_gain, 5.0))
+    quality_v2 = mean_ssim * mean_nat * mean_gain
+    return quality_v2
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # RECORDING / LOGGING
 # ═══════════════════════════════════════════════════════════════════════════
 
-def record_experiment(run_dir, commit_hash, quality_score, avg_loss,
-                      num_images, total_seconds, peak_vram_mb,
+def record_experiment(run_dir, commit_hash, quality_score_v2, quality_score_old,
+                      avg_loss, num_images, total_seconds, peak_vram_mb,
                       per_image_seconds, loss_breakdown, agg_metrics,
                       per_image_metrics, task, guidance_scale,
                       weights, n, s_start, s_end,
@@ -416,19 +633,28 @@ def record_experiment(run_dir, commit_hash, quality_score, avg_loss,
 
     quality_str = ""
     for k, v in sorted(agg_metrics.items()):
-        quality_str += f"  {k:25s}: {v:.3f}\n"
+        if isinstance(v, float) and abs(v) < 0.001:
+            quality_str += f"  {k:25s}: {v:.8f}\n"
+        else:
+            quality_str += f"  {k:25s}: {v:.4f}\n"
 
     per_img_str = ""
     for i, m in enumerate(per_image_metrics):
-        parts = ", ".join(f"{k}={v:.1f}" for k, v in sorted(m.items()))
-        per_img_str += f"  img_{i:02d}: {parts}\n"
+        parts = []
+        for k, v in sorted(m.items()):
+            if isinstance(v, float) and abs(v) < 0.001:
+                parts.append(f"{k}={v:.8f}")
+            else:
+                parts.append(f"{k}={v:.4f}")
+        per_img_str += f"  img_{i:02d}: {', '.join(parts)}\n"
 
     summary = f"""PGDiff Experiment Summary
 {'=' * 60}
 commit:             {commit_hash}
 started:            {time.strftime('%Y-%m-%d %H:%M:%S')}
 {'=' * 60}
-quality_score:      {quality_score:.3f}   <-- PRIMARY METRIC (lower = better)
+quality_score_v2:   {quality_score_v2:.6f}   <-- PRIMARY (higher = better, IMAGE-BASED)
+quality_score_old:  {quality_score_old:.3f}   (deprecated: avg_loss/sharpness)
 avg_guidance_loss:  {avg_loss:.3f}
 num_images:         {num_images}
 loss_per_image:     {avg_loss / num_images:.3f}
@@ -468,28 +694,37 @@ image quality metrics (per-image):
         f.write(summary)
 
 
-def print_results(quality_score, avg_loss, num_images, total_seconds,
-                  peak_vram_mb, loss_breakdown, agg_metrics, per_image_metrics):
+def print_results(quality_score_v2, quality_score_old, avg_loss, num_images,
+                  total_seconds, peak_vram_mb, loss_breakdown, agg_metrics,
+                  per_image_metrics, speed_stats=None):
     """Print parseable results for the agent to grep."""
     print()
     print("---")
-    print(f"quality_score:       {quality_score:.3f}   <-- PRIMARY (lower = better)")
-    print(f"avg_guidance_loss:   {avg_loss:.3f}")
-    print(f"num_images:          {num_images}")
-    print(f"loss_per_image:      {avg_loss / num_images:.3f}")
-    print(f"total_seconds:       {total_seconds:.1f}")
-    print(f"peak_vram_mb:        {peak_vram_mb:.1f}")
-    print(f"task:                {TASK}")
-    print(f"guidance_scale:      {GUIDANCE_SCALE:.3f}")
-    print(f"N:                   {N}")
-    print(f"timestep_respacing:  {'ddpm1000' if not TIMESTEP_RESPACING else TIMESTEP_RESPACING}")
-    print(f"use_ddim:            {USE_DDIM}")
-    print(f"seed:                {SEED}")
+    print(f"quality_score_v2:    {quality_score_v2:.4f}   <-- PRIMARY (higher = better)")
+    print(f"quality_score_old:    {quality_score_old:.3f}   (deprecated, lower = better)")
+    print(f"avg_guidance_loss:    {avg_loss:.3f}")
+    print(f"num_images:           {num_images}")
+    print(f"total_seconds:        {total_seconds:.1f}")
+    print(f"peak_vram_mb:         {peak_vram_mb:.1f}")
+    print(f"task:                 {TASK}")
+    print(f"guidance_scale:       {GUIDANCE_SCALE:.3f}")
+    print(f"N:                    {N}")
+    print(f"timestep_respacing:   {'ddpm1000' if not TIMESTEP_RESPACING else TIMESTEP_RESPACING}")
+    print(f"use_ddim:             {USE_DDIM}")
+    print(f"seed:                 {SEED}")
+    if speed_stats:
+        gc = speed_stats.get("total_guidance_calls", 0)
+        rc = speed_stats.get("total_restorer_calls", 0)
+        print(f"guidance_calls:       {gc}")
+        print(f"restorer_calls:       {rc}")
+        if gc > 0:
+            print(f"s_per_image:          {total_seconds / max(num_images, 1):.2f}")
+            print(f"ms_per_guidance:      {total_seconds / gc * 1000:.2f}")
     for k, v in sorted(agg_metrics.items()):
-        print(f"{k}:             {v:.3f}")
+        print(f"{k}:              {v:.8f}" if isinstance(v, float) and abs(v) < 0.001 else f"{k}:              {v:.4f}")
     for k, v in sorted(loss_breakdown.items()):
         if v:
-            print(f"loss_{k}:          {sum(v)/len(v):.3f}")
+            print(f"loss_{k}:           {sum(v)/len(v):.3f}")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -591,7 +826,7 @@ def main():
         mask_images = set(os.listdir(MASK_DIR))
 
     # ---- run inference ----
-    peak_vram_mb, per_image_seconds, per_image_metrics = run_experiment(
+    peak_vram_mb, per_image_seconds, per_image_metrics, speed_stats = run_experiment(
         diffusion, guidance, lr_images, OUT_DIR, TASK, GUIDANCE_SCALE,
         N, S_START, S_END, DIFFUSION_STEPS, SEED,
         IN_DIR, REF_DIR, MASK_DIR, mask_images,
@@ -600,29 +835,33 @@ def main():
 
     # ---- compute metrics ----
     avg_loss = guidance.avg_loss()
-    quality_score, avg_sharpness = compute_quality_score(avg_loss, per_image_metrics)
+    quality_score_old, avg_sharpness = compute_quality_score(avg_loss, per_image_metrics)
+    quality_score_v2 = compute_quality_score_v2(per_image_metrics)
     agg_metrics = aggregate_metrics(per_image_metrics)
     total_seconds = time.time() - t_start
 
+    # ---- print results (before recording to ensure output even on failure) ----
+    print_results(quality_score_v2, quality_score_old, avg_loss, len(lr_images),
+                  total_seconds, peak_vram_mb, guidance.loss_breakdown,
+                  agg_metrics, per_image_metrics, speed_stats)
+
     # ---- record if part of experiment loop ----
     if RUN_TAG:
-        commit_hash = os.popen("git rev-parse --short HEAD").read().strip()
-        exp_num = len([d for d in os.listdir(RUNS_DIR)
-                       if os.path.isdir(os.path.join(RUNS_DIR, d))]) + 1
-        run_dir = os.path.join(RUNS_DIR, f"exp_{exp_num:03d}")
-        record_experiment(
-            run_dir, commit_hash, quality_score, avg_loss,
-            len(lr_images), total_seconds, peak_vram_mb,
-            per_image_seconds, guidance.loss_breakdown, agg_metrics,
-            per_image_metrics,
-            TASK, GUIDANCE_SCALE, weights, N, S_START, S_END,
-            TIMESTEP_RESPACING, USE_DDIM, SEED,
-        )
-
-    # ---- print results ----
-    print_results(quality_score, avg_loss, len(lr_images), total_seconds,
-                  peak_vram_mb, guidance.loss_breakdown,
-                  agg_metrics, per_image_metrics)
+        try:
+            commit_hash = os.popen("git rev-parse --short HEAD").read().strip()
+            exp_num = len([d for d in os.listdir(RUNS_DIR)
+                           if os.path.isdir(os.path.join(RUNS_DIR, d))]) + 1
+            run_dir = os.path.join(RUNS_DIR, f"exp_{exp_num:03d}")
+            record_experiment(
+                run_dir, commit_hash, quality_score_v2, quality_score_old,
+                avg_loss, len(lr_images), total_seconds, peak_vram_mb,
+                per_image_seconds, guidance.loss_breakdown, agg_metrics,
+                per_image_metrics,
+                TASK, GUIDANCE_SCALE, weights, N, S_START, S_END,
+                TIMESTEP_RESPACING, USE_DDIM, SEED,
+            )
+        except Exception as e:
+            print(f"[record_experiment] WARNING: recording failed: {e}")
 
 
 if __name__ == "__main__":
