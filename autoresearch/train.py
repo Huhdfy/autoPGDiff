@@ -82,7 +82,7 @@ S_START = 1.0        # start fraction of T (e.g. 1.0 = from t=T)
 S_END = 0.7          # end fraction of T (e.g. 0.7 = until 0.7T)
 
 # --- sampling ---
-TIMESTEP_RESPACING = "ddpm50"   # full 1000 steps
+TIMESTEP_RESPACING = "ddpm25"   # full 1000 steps
 USE_DDIM = True
 CLIP_DENOISED = True
 BATCH_SIZE = 1
