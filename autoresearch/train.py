@@ -61,7 +61,7 @@ from prepare import (
 # ═══════════════════════════════════════════════════════════════════════════
 
 TASK = "restoration"
-GUIDANCE_SCALE = 0.0
+GUIDANCE_SCALE = 0.1
 SEED = 1234
 
 # --- task weights ---
@@ -95,11 +95,14 @@ IN_DIR = "../testdata/cropped_faces"
 MAX_IMAGES = 1
 # Speed optimization flags
 BLOCK_UNET_GRAD = True   # True: restorer outside enable_grad
-USE_DPMSOLVER = True     # True: use DPM-Solver-2 (higher-order ODE, fewer steps)
-DPM_SOLVER_STEPS = 25     # number of DPM-Solver steps (if USE_DPMSOLVER=True)
+USE_DPMSOLVER = False     # True: use DPM-Solver-2 (higher-order ODE, fewer steps)
+DPM_SOLVER_STEPS = 15     # number of DPM-Solver steps (if USE_DPMSOLVER=True)
 RESTORER_T_ZERO = False   # True: call restorer with t=0 (test t-conditioning)
 DPM_FIRST_ORDER = False   # True: skip 2nd-order correction in DPM-Solver
 CONSTANT_SCHEDULE = False # True: disable linear schedule, use schedule=1.0
+HYBRID_MODE = True       # True: DPM coarse + DDPM refine
+HYBRID_SWITCH_T = 200     # timestep to switch from DPM to DDPM
+REFINE_STEPS = 50         # DDPM steps in refinement phase (if HYBRID_MODE)
 OUT_DIR = "../results/experiment"
 REF_DIR = None
 MASK_DIR = None
@@ -438,6 +441,124 @@ def dpm_solver_sample_loop(model_fn, shape, alphas_cumprod, model, cond_fn,
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# HYBRID SAMPLER — DPM coarse → DDPM refine
+# ═══════════════════════════════════════════════════════════════════════════
+
+def hybrid_sample_loop(model_fn, shape, alphas_cumprod, model, cond_fn,
+                       model_kwargs, clip_denoised=True, device=None,
+                       seed=1234, coarse_dpm_steps=15, switch_t=200,
+                       refine_steps=50):
+    import math as _math
+    from guided_diffusion.respace import SpacedDiffusion
+    from guided_diffusion import gaussian_diffusion as gd
+
+    th.manual_seed(seed)
+    np.random.seed(seed)
+    if th.cuda.is_available():
+        th.cuda.manual_seed_all(seed)
+
+    T = len(alphas_cumprod)
+    alpha_bar = th.from_numpy(alphas_cumprod.astype(np.float64)).float().to(device)
+    alpha = alpha_bar.sqrt()
+    sigma = (1 - alpha_bar).sqrt()
+    lam = th.log(alpha / (sigma + 1e-8))
+
+    # ── Phase 1: DPM-Solver from T-1 to switch_t ──
+    lam_switch = lam[switch_t]
+    lam_targets = th.linspace(lam[0], lam_switch, coarse_dpm_steps, device=device)
+    step_t = sorted(set(int(th.argmin((lam - lv).abs()).item()) for lv in lam_targets), reverse=True)
+    if len(step_t) < 2:
+        step_t = [T-1, switch_t]
+
+    def _bc(tv):
+        return alpha[tv].view(1, 1, 1, 1).expand(shape)
+    def _bs(tv):
+        return sigma[tv].view(1, 1, 1, 1).expand(shape)
+
+    x = th.randn(*shape, device=device)
+
+    for i in range(len(step_t) - 1):
+        t_cur = step_t[i]
+        t_next = step_t[i + 1]
+        if t_cur == t_next:
+            continue
+        t_tensor = th.tensor([t_cur] * shape[0], device=device)
+        a_cur, s_cur = _bc(t_cur), _bs(t_cur)
+        a_nxt, s_nxt = _bc(t_next), _bs(t_next)
+
+        with th.no_grad():
+            model_out = model_fn(x, t_tensor, **model_kwargs)
+            x0_pred = model_out[:, :3]
+        if clip_denoised:
+            x0_pred = x0_pred.clamp(-1, 1)
+
+        eps_pred = (x - a_cur * x0_pred) / (s_cur + 1e-8)
+
+        with th.enable_grad():
+            pxi = x0_pred.detach().requires_grad_(True)
+            model_kwargs['pred_xstart'] = pxi
+            grad, _ = cond_fn(x, t_tensor, **model_kwargs)
+            model_kwargs.pop('pred_xstart', None)
+        if grad is not None:
+            gs = model_kwargs.get("scale", 0.1)
+            eps_pred = eps_pred - s_cur * grad * gs
+
+        if i < len(step_t) - 2:
+            t_mid = int((t_cur * t_next) ** 0.5) if t_cur > 0 else 0
+            if t_mid == t_cur or t_mid == t_next:
+                t_mid = (t_cur + t_next) // 2
+            a_mid, s_mid = _bc(t_mid), _bs(t_mid)
+            x_mid = a_mid * x0_pred + s_mid * eps_pred
+            t_mid_t = th.tensor([t_mid] * shape[0], device=device)
+            with th.no_grad():
+                model_out_mid = model_fn(x_mid, t_mid_t, **model_kwargs)
+                x0_mid = model_out_mid[:, :3]
+            if clip_denoised:
+                x0_mid = x0_mid.clamp(-1, 1)
+            eps_mid = (x_mid - a_mid * x0_mid) / (s_mid + 1e-8)
+            with th.enable_grad():
+                pxi_mid = x0_mid.detach().requires_grad_(True)
+                model_kwargs['pred_xstart'] = pxi_mid
+                g_mid, _ = cond_fn(x_mid, t_mid_t, **model_kwargs)
+                model_kwargs.pop('pred_xstart', None)
+            if g_mid is not None:
+                eps_mid = eps_mid - s_mid * g_mid * gs
+            h = (lam[t_cur] - lam[t_next]).item()
+            h1 = (lam[t_cur] - lam[t_mid]).item()
+            r = h1 / max(h, 1e-8) if h != 0 else 1.0
+            eps_corr = (1 + 1 / (2 * max(r, 0.01))) * eps_mid - (1 / (2 * max(r, 0.01))) * eps_pred
+            x_out = a_nxt * x0_mid + s_nxt * eps_corr
+            if th.isnan(x_out).any():
+                x_out = a_nxt * x0_pred + s_nxt * eps_pred
+            x = x_out
+        else:
+            x = a_nxt * x0_pred + s_nxt * eps_pred
+
+    # ── Phase 2: DDPM refinement from switch_t to 0 ──
+    betas = gd.get_named_beta_schedule("linear", DIFFUSION_STEPS)
+    use_ts = set()
+    stride = max(1, switch_t // (refine_steps - 1)) if refine_steps > 1 else switch_t
+    for k in range(refine_steps):
+        use_ts.add(max(0, switch_t - k * stride))
+    use_ts.add(0)
+
+    refine_diff = SpacedDiffusion(
+        use_timesteps=use_ts, betas=betas,
+        model_mean_type=gd.ModelMeanType.START_X,
+        model_var_type=gd.ModelVarType.LEARNED_RANGE,
+        loss_type=gd.LossType.MSE, rescale_timesteps=False,
+    )
+
+    x = refine_diff.p_sample_loop(
+        model_fn, shape, clip_denoised=clip_denoised,
+        model_kwargs=model_kwargs, cond_fn=cond_fn,
+        device=device, seed=seed, noise=x,
+    )
+
+    return x
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # SAMPLING / EXPERIMENT RUNNER  —  Edit freely: change loop, add metrics
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -491,7 +612,22 @@ def run_experiment(diffusion, guidance, images, out_dir, task, guidance_scale,
             diffusion_steps, ref_dir, mask_dir, mask_images
         )
 
-        if USE_DPMSOLVER:
+        if HYBRID_MODE:
+            sample = hybrid_sample_loop(
+                model_fn,
+                (BATCH_SIZE, 3, IMAGE_SIZE, IMAGE_SIZE),
+                diffusion.alphas_cumprod,
+                model,
+                guidance,
+                model_kwargs=model_kwargs,
+                clip_denoised=CLIP_DENOISED,
+                device=device(),
+                seed=seed,
+                coarse_dpm_steps=DPM_SOLVER_STEPS,
+                switch_t=HYBRID_SWITCH_T,
+                refine_steps=REFINE_STEPS,
+            )
+        elif USE_DPMSOLVER:
             sample = dpm_solver_sample_loop(
                 model_fn,
                 (BATCH_SIZE, 3, IMAGE_SIZE, IMAGE_SIZE),
