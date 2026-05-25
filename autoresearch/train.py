@@ -69,7 +69,7 @@ LIGHTNESS_WEIGHT = 1.0
 COLOR_WEIGHT = 0.05
 UNMASKED_WEIGHT = 1.0
 SS_WEIGHT = 1.0
-EDGE_WEIGHT = 0.0         # 0 = ablation: remove edge preservation
+EDGE_WEIGHT = 0.02         # 0 = ablation: remove edge preservation
 GRAD_MOMENTUM = 0.0      # 0 = no momentum (improves quality at full 1000 steps)
 REF_WEIGHT = 25.0
 OP_LIGHTNESS_WEIGHT = 1.0
