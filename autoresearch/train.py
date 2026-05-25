@@ -82,7 +82,7 @@ S_START = 1.0        # start fraction of T (e.g. 1.0 = from t=T)
 S_END = 0.7          # end fraction of T (e.g. 0.7 = until 0.7T)
 
 # --- sampling ---
-TIMESTEP_RESPACING = ""   # full 1000 steps
+TIMESTEP_RESPACING = "ddpm50"   # full 1000 steps
 USE_DDIM = False
 CLIP_DENOISED = True
 BATCH_SIZE = 1
@@ -96,7 +96,7 @@ MAX_IMAGES = 1
 # Speed optimization flags
 BLOCK_UNET_GRAD = True   # True: restorer outside enable_grad
 USE_DPMSOLVER = False     # True: use DPM-Solver-2 (higher-order ODE, fewer steps)
-DPM_SOLVER_STEPS = 1000     # number of DPM-Solver steps (if USE_DPMSOLVER=True)
+DPM_SOLVER_STEPS = 50     # number of DPM-Solver steps (if USE_DPMSOLVER=True)
 RESTORER_T_ZERO = False   # True: call restorer with t=0 (test t-conditioning)
 DPM_FIRST_ORDER = False   # True: skip 2nd-order correction in DPM-Solver
 CONSTANT_SCHEDULE = False # True: disable linear schedule, use schedule=1.0
