@@ -79,7 +79,7 @@ RESIDUAL_BLEND = 0.5        # output = (sample + input * blend) / (1 + blend) �
 # --- multi-step guidance ---
 N = 1                # gradient steps per timestep (>1 = stronger guidance)
 S_START = 1.0        # start fraction of T (e.g. 1.0 = from t=T)
-S_END = 0.6          # end fraction of T (e.g. 0.7 = until 0.7T)
+S_END = 0.7          # end fraction of T (e.g. 0.7 = until 0.7T)
 
 # --- sampling ---
 TIMESTEP_RESPACING = ""   # full 1000 steps
@@ -94,20 +94,20 @@ IN_DIR = "../testdata/cropped_faces"
 # Use only first N images for faster experiments
 MAX_IMAGES = 1
 # Speed optimization flags
-BLOCK_UNET_GRAD = True   # True: restorer outside enable_grad
+BLOCK_UNET_GRAD = False   # True: restorer outside enable_grad
 USE_DPMSOLVER = False     # True: use DPM-Solver-2 (higher-order ODE, fewer steps)
 DPM_SOLVER_STEPS = 35     # number of DPM-Solver steps (if USE_DPMSOLVER=True)
 RESTORER_T_ZERO = False   # True: call restorer with t=0 (test t-conditioning)
 DPM_FIRST_ORDER = False   # True: skip 2nd-order correction in DPM-Solver
-CONSTANT_SCHEDULE = False # True: disable linear schedule, use schedule=1.0
+CONSTANT_SCHEDULE = True # True: disable linear schedule, use schedule=1.0
 HYBRID_MODE = False       # True: DPM coarse + DDPM refine
 HYBRID_SWITCH_T = 400     # timestep to switch from DPM to DDPM
 REFINE_STEPS = 50         # DDPM steps in refinement phase (if HYBRID_MODE)
-GUIDANCE_EVERY_K = 2      # run guidance every K steps (1=every step, 5=sparse)
+GUIDANCE_EVERY_K = 1      # run guidance every K steps (1=every step, 5=sparse)
 SKIP_ZERO_SCALE = True    # True: skip guidance when scale=0 (saves restorer+grad)
-GUIDANCE_EARLY_STOP = True  # True: stop guidance after t < s_end
+GUIDANCE_EARLY_STOP = False  # True: stop guidance after t < s_end
 USE_FP16 = False          # True: run UNet in float16
-OUT_DIR = "../results/vis_tmp2"
+OUT_DIR = "../autoresearch/results/paper_baseline"
 REF_DIR = None
 MASK_DIR = None
 MODEL_PATH = "../models/iddpm_ffhq512_ema500000.pth"
@@ -115,7 +115,7 @@ RESTORER_PATH = "../models/restorer/rrdb_iter_100000.pth"
 ARCFACE_PATH = "../models/ms1mv3_arcface_r50_fp16.pth"
 
 # --- recording ---
-RUN_TAG = "accelerate_v1"  # 推理加速实验第1轮
+RUN_TAG = ""  # 推理加速实验第1轮
 RUNS_DIR = "../runs"     # per-experiment detailed logs stored here
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -242,8 +242,8 @@ class PartialGuidance:
 
             # ── restoration (smooth semantics) ──
             if "restoration" in task:
-                loss_s = F.smooth_l1_loss(
-                    fake_g_output, pred_xstart_in, reduction="sum", beta=1.0
+                loss_s = F.mse_loss(
+                    fake_g_output, pred_xstart_in, reduction="sum"
                 ) * self.w.get("ss_weight", 1.0)
                 self._track("smooth_semantics", loss_s.item())
                 total_loss = total_loss + loss_s
