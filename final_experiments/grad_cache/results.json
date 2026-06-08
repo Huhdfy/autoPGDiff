@@ -1,0 +1,112 @@
+{
+  "C1": {
+    "label": "C1_K3_s15",
+    "K": 3,
+    "scale": 0.15,
+    "cache": false,
+    "psnr": 22.877,
+    "ssim": 0.6629,
+    "niqe": 774.6628,
+    "time": 84.8,
+    "vram": 1018.6
+  },
+  "C2": {
+    "label": "C2_K3_s15_cache",
+    "K": 3,
+    "scale": 0.15,
+    "cache": true,
+    "psnr": 22.3242,
+    "ssim": 0.6624,
+    "niqe": 828.2493,
+    "time": 84.0,
+    "vram": 1021.6
+  },
+  "C3": {
+    "label": "C3_K3_s20_cache",
+    "K": 3,
+    "scale": 0.2,
+    "cache": true,
+    "psnr": 21.9503,
+    "ssim": 0.6617,
+    "niqe": 905.3134,
+    "time": 84.3,
+    "vram": 1021.6
+  },
+  "D1": {
+    "label": "D1_K5_s15",
+    "K": 5,
+    "scale": 0.15,
+    "cache": false,
+    "psnr": 22.6396,
+    "ssim": 0.6669,
+    "niqe": 773.6291,
+    "time": 74.3,
+    "vram": 1018.0
+  },
+  "D2": {
+    "label": "D2_K5_s15_cache",
+    "K": 5,
+    "scale": 0.15,
+    "cache": true,
+    "psnr": 22.3244,
+    "ssim": 0.6623,
+    "niqe": 826.8123,
+    "time": 74.6,
+    "vram": 1021.6
+  },
+  "A0": {
+    "label": "A0_paper",
+    "K": 1,
+    "scale": 0.1,
+    "cache": false,
+    "psnr": 22.685,
+    "ssim": 0.6606,
+    "niqe": 778.4075,
+    "time": 136.2,
+    "vram": 1018.0
+  },
+  "A1": {
+    "label": "A1_K2_s15",
+    "K": 2,
+    "scale": 0.15,
+    "cache": false,
+    "psnr": 22.7552,
+    "ssim": 0.6577,
+    "niqe": 776.8785,
+    "time": 97.4,
+    "vram": 1019.0
+  },
+  "B1": {
+    "label": "B1_K2_s10_cache",
+    "K": 2,
+    "scale": 0.1,
+    "cache": true,
+    "psnr": 22.6819,
+    "ssim": 0.6603,
+    "niqe": 778.6045,
+    "time": 98.4,
+    "vram": 1021.6
+  },
+  "B2": {
+    "label": "B2_K2_s15_cache",
+    "K": 2,
+    "scale": 0.15,
+    "cache": true,
+    "psnr": 22.3233,
+    "ssim": 0.6625,
+    "niqe": 828.9765,
+    "time": 97.7,
+    "vram": 1021.6
+  },
+  "B3": {
+    "label": "B3_K2_s20_cache",
+    "K": 2,
+    "scale": 0.2,
+    "cache": true,
+    "psnr": 21.9529,
+    "ssim": 0.6618,
+    "niqe": 902.1877,
+    "time": 97.4,
+    "vram": 1021.6
+  }
+}
