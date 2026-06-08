@@ -1,0 +1,7 @@
+name	v2	ssim	nat	gain	spi_s	vram_mb	gcalls	rcalls	description
+baseline	3.8666	0.8926	0.8664	5.0288	97.23	1018.0	1000	500	Baseline: DDPM1000, s_end=0.5, K=1, scale=0.1
+E1_k2	3.7663	0.8704	0.8654	6.8838	78.81	1019.0	1000	250	DDPM1000 s_end=0.5 K=2: sparse guidance every 2 steps
+E2_mom03	3.8665	0.8925	0.8664	5.0288	98.07	1018.0	1000	500	DDPM1000 s_end=0.5 K=1 momentum=0.3: light smoothing
+E3_mom01	3.8647	0.8925	0.866	5.0295	98.11	1018.0	1000	500	DDPM1000 s_end=0.5 K=1 momentum=0.1: minimal smoothing
+E4_s04	3.6395	0.8967	0.8659	4.6871	105.69	1018.0	1000	600	DDPM1000 s_end=0.4 K=1: earlier guidance stop
+E5_s06	3.8079	0.8804	0.865	6.2476	90.16	1018.0	1000	400	DDPM1000 s_end=0.6 K=1: later guidance stop

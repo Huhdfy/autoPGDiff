@@ -1,0 +1,41 @@
+Loading diffusion model...
+Loading restorer...
+==========================================================
+  Task:              restoration
+  Guidance scale:    0.1
+  N:                 1  (range [1.0T, 1.0T])
+  Steps:             full 1000
+  DDIM:              True
+  Seed:              1234
+  Input:             ../testdata/pairs/LQ
+  GT:                ../testdata/pairs/GT
+==========================================================
+[1/1] 0000_00010.png
+
+--- STDERR ---
+[rank0]: Traceback (most recent call last):
+[rank0]:   File "/mnt/workspace/autoPGDiff/autoresearch/train.py", line 1491, in <module>
+[rank0]:     main()
+[rank0]:   File "/mnt/workspace/autoPGDiff/autoresearch/train.py", line 1449, in main
+[rank0]:     peak_vram_mb, per_image_seconds, per_image_metrics, speed_stats = run_experiment(
+[rank0]:                                                                       ^^^^^^^^^^^^^^^
+[rank0]:   File "/mnt/workspace/autoPGDiff/autoresearch/train.py", line 673, in run_experiment
+[rank0]:     sample = diffusion.ddim_sample_loop(
+[rank0]:              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/mnt/workspace/autoPGDiff/guided_diffusion/gaussian_diffusion.py", line 718, in ddim_sample_loop
+[rank0]:     for sample in self.ddim_sample_loop_progressive(
+[rank0]:                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/mnt/workspace/autoPGDiff/guided_diffusion/gaussian_diffusion.py", line 770, in ddim_sample_loop_progressive
+[rank0]:     out = self.ddim_sample(
+[rank0]:           ^^^^^^^^^^^^^^^^^
+[rank0]:   File "/mnt/workspace/autoPGDiff/guided_diffusion/gaussian_diffusion.py", line 636, in ddim_sample
+[rank0]:     out = self.condition_score(cond_fn, out, x, t, model_kwargs=model_kwargs)
+[rank0]:           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/mnt/workspace/autoPGDiff/guided_diffusion/respace.py", line 102, in condition_score
+[rank0]:     return super().condition_score(self._wrap_model(cond_fn), *args, **kwargs)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/mnt/workspace/autoPGDiff/guided_diffusion/gaussian_diffusion.py", line 391, in condition_score
+[rank0]:     eps = eps - (1 - alpha_bar).sqrt() * cond_fn(
+[rank0]:                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]: TypeError: only integer tensors of a single element can be converted to an index
+[rank0]:[W607 22:22:18.271026490 ProcessGroupNCCL.cpp:1553] Warning: WARNING: destroy_process_group() was not called before program exit, which can leak resources. For more info, please see https://pytorch.org/docs/stable/distributed.html#shutdown (function operator())

@@ -64,7 +64,7 @@ from prepare import (
 # ═══════════════════════════════════════════════════════════════════════════
 
 TASK = "restoration"
-GUIDANCE_SCALE = 0.15
+GUIDANCE_SCALE = 0.35
 SEED = 1234
 
 # --- task weights ---
@@ -76,10 +76,9 @@ EDGE_WEIGHT = 0.0         # 0 = ablation: remove edge preservation
 GRAD_MOMENTUM = 0.0      # 0 = no momentum (improves quality at full 1000 steps)
 REF_WEIGHT = 25.0
 OP_LIGHTNESS_WEIGHT = 1.0
-OP_COLOR_WEIGHT = 0.5
-RESIDUAL_BLEND = 0.0        # output = (sample + input * blend) / (1 + blend) — weighted average
+OP_COLOR_WEIGHT = 0.05
+RESIDUAL_BLEND = 0.5        # output = (sample + input * blend) / (1 + blend) — weighted average
 USE_HUBER_LOSS = False      # True = SmoothL1 loss (current), False = MSE loss (paper original)
-USE_L1_LOSS = False          # True = L1 loss (exp_008-style), overrides USE_HUBER_LOSS
 
 # --- multi-step guidance ---
 N = 1                # gradient steps per timestep (>1 = stronger guidance)
@@ -95,25 +94,25 @@ IMAGE_SIZE = 512
 DIFFUSION_STEPS = 1000    # total diffusion steps of the pre-trained model
 
 # --- I/O paths ---
-IN_DIR = "../testdata/temp_multi/LQ"
-GT_DIR = "../testdata/temp_multi/GT"   # GT images for reference-based metrics (PSNR, SSIM_gt)
+IN_DIR = "../testdata/pairs/LQ"
+GT_DIR = "../testdata/pairs/GT"   # GT images for reference-based metrics (PSNR, SSIM_gt)
 # Use only first N images for faster experiments
-MAX_IMAGES = 0   # 0 = use all images in IN_DIR
+MAX_IMAGES = 1   # 0 = use all images in IN_DIR
 # Speed optimization flags
 BLOCK_UNET_GRAD = True   # True: restorer outside enable_grad
 USE_DPMSOLVER = False     # True: use DPM-Solver-2 (higher-order ODE, fewer steps)
-DPM_SOLVER_STEPS = 15     # number of DPM-Solver steps (if USE_DPMSOLVER=True)
+DPM_SOLVER_STEPS = 35     # number of DPM-Solver steps (if USE_DPMSOLVER=True)
 RESTORER_T_ZERO = False   # True: call restorer with t=0 (test t-conditioning)
 DPM_FIRST_ORDER = False   # True: skip 2nd-order correction in DPM-Solver
-CONSTANT_SCHEDULE = True # True: disable linear schedule, use schedule=1.0
+CONSTANT_SCHEDULE = False # True: disable linear schedule, use schedule=1.0
 HYBRID_MODE = False       # True: DPM coarse + DDPM refine
-HYBRID_SWITCH_T = 200     # timestep to switch from DPM to DDPM
+HYBRID_SWITCH_T = 400     # timestep to switch from DPM to DDPM
 REFINE_STEPS = 50         # DDPM steps in refinement phase (if HYBRID_MODE)
-GUIDANCE_EVERY_K = 2      # run guidance every K steps (1=every step, 5=sparse)
+GUIDANCE_EVERY_K = 3      # run guidance every K steps (1=every step, 5=sparse)
 SKIP_ZERO_SCALE = True    # True: skip guidance when scale=0 (saves restorer+grad)
 GUIDANCE_EARLY_STOP = False  # True: stop guidance after t < s_end
 USE_FP16 = False          # True: run UNet in float16
-OUT_DIR = "../final_experiments/batch_severe/K2_s15_best"
+OUT_DIR = "../results/exp_R3_E2_MSE_K3_s35"
 REF_DIR = None
 MASK_DIR = None
 MODEL_PATH = "../models/iddpm_ffhq512_ema500000.pth"
@@ -248,11 +247,7 @@ class PartialGuidance:
 
             # ── restoration (smooth semantics) ──
             if "restoration" in task:
-                if USE_L1_LOSS:
-                    loss_s = F.l1_loss(
-                        fake_g_output, pred_xstart_in, reduction="sum"
-                    ) * self.w.get("ss_weight", 1.0)
-                elif USE_HUBER_LOSS:
+                if USE_HUBER_LOSS:
                     loss_s = F.smooth_l1_loss(
                         fake_g_output, pred_xstart_in, reduction="sum", beta=1.0
                     ) * self.w.get("ss_weight", 1.0)

@@ -1,0 +1,66 @@
+Loading diffusion model...
+Loading restorer...
+==========================================================
+  Task:              restoration
+  Guidance scale:    0.1
+  N:                 1  (range [1.0T, 0.5T])
+  Steps:             full 1000
+  DDIM:              False
+  Seed:              1234
+  Input:             ../testdata/pairs/LQ
+  GT:                ../testdata/pairs/GT
+==========================================================
+[1/1] 0000_00010.png
+
+---
+quality_score_v2:    0.7958   <-- PRIMARY (higher = better)
+quality_score_old:    87.404   (deprecated, lower = better)
+psnr:                 28.4331   <-- PAPER: PSNR vs GT (higher = better)
+ssim_gt:              0.8388   <-- PAPER: SSIM vs GT (higher = better)
+niqe:                 4535.5372   <-- PAPER: NIQE (lower = better)
+avg_guidance_loss:    7986.921
+num_images:           1
+total_seconds:        99.2
+peak_vram_mb:         1018.6
+task:                 restoration
+guidance_scale:       0.100
+N:                    1
+timestep_respacing:   ddpm1000
+use_ddim:             False
+seed:                 1234
+guidance_calls:       1000
+restorer_calls:       500
+s_per_image:          99.20
+ms_per_guidance:      99.20
+edge_density_avg:              0.3157
+edge_density_max:              0.3157
+edge_density_min:              0.3157
+local_var_mean_avg:              736.3966
+local_var_mean_max:              736.3966
+local_var_mean_min:              736.3966
+naturalness_avg:              0.8651
+naturalness_max:              0.8651
+naturalness_min:              0.8651
+niqe_avg:              4535.5372
+niqe_max:              4535.5372
+niqe_min:              4535.5372
+psnr_avg:              28.4331
+psnr_max:              28.4331
+psnr_min:              28.4331
+sharpness_avg:              91.3791
+sharpness_gain_avg:              1.0117
+sharpness_gain_max:              1.0117
+sharpness_gain_min:              1.0117
+sharpness_max:              91.3791
+sharpness_min:              91.3791
+ssim_gt_avg:              0.8388
+ssim_gt_max:              0.8388
+ssim_gt_min:              0.8388
+ssim_input_avg:              0.9092
+ssim_input_max:              0.9092
+ssim_input_min:              0.9092
+loss_edge_preservation:           0.000
+loss_smooth_semantics:           15973.842
+
+--- STDERR ---
+[rank0]:[W607 22:24:00.190905808 ProcessGroupNCCL.cpp:1553] Warning: WARNING: destroy_process_group() was not called before program exit, which can leak resources. For more info, please see https://pytorch.org/docs/stable/distributed.html#shutdown (function operator())

@@ -1,0 +1,13 @@
+name	v2	psnr	ssim_gt	niqe	sec	vram	gcalls	rcalls	desc
+P0_paper	0.6123	30.32	0.8629	4513	139.1	4345	1000	1000	Original PGDiff: MSE, CONSTANT schedule, no early-stop, BLOCK_UNET=False
+C1_opt_base	0.5480	27.28	0.8330	4531	99.3	1018	1000	500	Optimized: Huber, LinearSched, s=0.5, BLOCK_UNET=True, K=1
+C2_K2	0.4367	26.49	0.8364	4479	98.4	1019	1000	500	Sparse: K=2, full-step guidance
+C3_s05K3	0.4251	25.28	0.8261	4475	73.5	1019	1000	166	Combo best: s=0.5, K=3
+C4_bigscale	0.5114	28.04	0.8430	4513	98.4	1019	1000	500	Scale=0.20: K=2, stronger guidance
+C5_noguide	0.4495	15.17	0.7241	4542	60.3	1016	1000	0	Pure diffusion: scale=0, no restorer calls
+C6_dpm100	0.7364	8.53	0.1856	4884	28.5	1054	185	185	DPM-Solver-2: 100 steps
+C7_ddpm200	0.3200	11.87	0.0837	2838	22.8	1018	200	100	DDPM 200: 5x speedup, s=0.5, K=1
+C8_lowscale	0.4605	26.16	0.8316	4489	99.1	1019	1000	500	Scale=0.05: minimal guidance
+C9_K5	0.4183	24.41	0.8188	4451	74.8	1018	1000	200	s/K search: K=5, full-step
+C10_s07	0.5156	24.54	0.7979	4545	82.5	1018	1000	300	s/K search: s=0.7, K=1
+C11_s05K2	0.4618	26.17	0.8316	4489	79.1	1019	1000	250	s/K search: s=0.5, K=2

@@ -1,0 +1,15 @@
+Loading diffusion model...
+Loading restorer...
+
+--- STDERR ---
+[rank0]: Traceback (most recent call last):
+[rank0]:   File "/mnt/workspace/autoPGDiff/autoresearch/train.py", line 1496, in <module>
+[rank0]:     main()
+[rank0]:   File "/mnt/workspace/autoPGDiff/autoresearch/train.py", line 1407, in main
+[rank0]:     use_timesteps = space_timesteps(DIFFUSION_STEPS, TIMESTEP_RESPACING)
+[rank0]:                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/mnt/workspace/autoPGDiff/guided_diffusion/respace.py", line 38, in space_timesteps
+[rank0]:     section_counts = [int(x) for x in section_counts.split(",")]
+[rank0]:                       ^^^^^^
+[rank0]: ValueError: invalid literal for int() with base 10: 'ddim100'
+[rank0]:[W608 09:20:48.153891983 ProcessGroupNCCL.cpp:1553] Warning: WARNING: destroy_process_group() was not called before program exit, which can leak resources. For more info, please see https://pytorch.org/docs/stable/distributed.html#shutdown (function operator())
